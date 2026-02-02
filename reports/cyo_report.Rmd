@@ -1,0 +1,168 @@
+---
+title: "Finding Home in France: A Data-Driven Approach to City Selection"
+subtitle: "HarvardX PH125.9x Data Science Capstone - Choose Your Own Project"
+author: "Adam Solomon"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.align = "center",
+  fig.width = 8,
+  fig.height = 6
+)
+
+# Load required libraries
+library(tidyverse)
+library(knitr)
+library(scales)
+```
+
+# Executive Summary
+
+[TODO: Write after analysis is complete. Include key findings, methodology overview, and main conclusions in 1-2 paragraphs.]
+
+# Introduction
+
+## Dataset Description
+
+This project analyzes French real estate transaction data from the DVF (Demandes de Valeurs Foncières) database, a comprehensive open dataset published by the French government. The DVF dataset contains all property sales in France from 2020 to 2025, including transaction prices, property characteristics, and geographic information.
+
+Supplementary datasets include:
+
+- **Communes master file**: Geographic and administrative data for all French municipalities
+- **INSEE population data**: Demographic structure by age brackets at the commune level
+- **Météo France climate normals**: Sunshine hours, temperature, and rainfall data for major cities
+
+## Project Goal
+
+The goal of this project is to develop a data-driven methodology for identifying optimal cities for relocation in France, based on a combination of climate preferences, demographic characteristics, and real estate market conditions. The analysis will culminate in predictive models for property values and a ranked list of recommended cities.
+
+## Personal Motivation
+
+[TODO: Add personal context for why this analysis matters to you.]
+
+# Methods & Analysis
+
+## Data Sources
+
+The analysis draws on multiple data sources:
+
+1. **DVF (Demandes de Valeurs Foncières)**: French government open data on property transactions
+   - Years covered: 2020-2025
+   - Source: data.gouv.fr
+
+2. **Communes Reference Data**: INSEE administrative boundaries and postal codes
+   - Source: data.gouv.fr
+
+3. **Population by Age**: INSEE census data with 10 age brackets
+   - Source: data.gouv.fr (INSEE RP 2020)
+
+4. **Climate Data**: Météo France 30-year climate normals
+   - Variables: sunshine hours, temperature, rainfall
+
+```{r data-sources, eval=FALSE}
+# Data loading code will be sourced from scripts/cyo_project.R
+source("../scripts/cyo_project.R")
+```
+
+## City Selection Criteria
+
+To identify candidate cities for relocation, I filtered France's major metropolitan areas using three criteria: climate (annual sunshine hours), demographics (population age structure), and real estate market dynamics. The following visualizations illustrate why [FINAL CITIES] emerged as top candidates.
+
+### Climate Screening
+
+[TODO: Visualizations of sunshine hours, temperature comparisons]
+
+### Demographic Screening
+
+[TODO: Population age structure analysis, dependency ratios]
+
+### Real Estate Market Screening
+
+[TODO: Price trends, transaction volumes, market liquidity]
+
+## Data Preparation
+
+### Data Cleaning
+
+[TODO: Describe data cleaning steps, handling missing values, outlier treatment]
+
+### Feature Engineering
+
+[TODO: Describe derived variables, transformations]
+
+### Final Dataset Structure
+
+[TODO: Summary statistics of the analysis-ready dataset]
+
+## Modeling Approach
+
+### Model Selection
+
+[TODO: Describe models considered and rationale for selection]
+
+### Training and Validation
+
+[TODO: Describe cross-validation strategy, train/test split]
+
+### Evaluation Metrics
+
+[TODO: Define RMSE, R-squared, and other metrics used]
+
+# Results
+
+## Exploratory Data Analysis
+
+[TODO: Key visualizations and insights from EDA]
+
+## Model Performance
+
+[TODO: Model comparison table, performance metrics]
+
+## City Rankings
+
+[TODO: Final ranked list with supporting visualizations]
+
+# Conclusion
+
+## Summary of Findings
+
+[TODO: Recap of main findings and recommendations]
+
+## Limitations
+
+[TODO: Discuss data limitations, methodological constraints]
+
+## Future Work
+
+[TODO: Potential extensions and improvements]
+
+# References
+
+- DVF Open Data: https://www.data.gouv.fr/fr/datasets/demandes-de-valeurs-foncieres/
+- INSEE Population Data: https://www.insee.fr/
+- Météo France Climate Normals: https://meteofrance.com/
+- R Core Team (2024). R: A language and environment for statistical computing.
+- Wickham H, et al. (2019). Welcome to the tidyverse. Journal of Open Source Software.
+
+# Appendix
+
+## Session Info
+
+```{r session-info}
+sessionInfo()
+```

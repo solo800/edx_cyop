@@ -1,0 +1,29 @@
+.
+├── cyo_edx.Rproj
+├── cyo_edx.code-workspace
+├── cyo_edx_projtree.txt
+├── data
+│   └── raw
+│       ├── communes_2025.csv
+│       ├── population_age_brackets.xlsx
+│       └── sunshine_climate_france.csv
+├── local_data
+│   ├── ValeursFoncieres-2020-S2.txt
+│   ├── ValeursFoncieres-2021.txt
+│   ├── ValeursFoncieres-2022.txt
+│   ├── ValeursFoncieres-2023.txt
+│   ├── ValeursFoncieres-2024.txt
+│   ├── ValeursFoncieres-2025-S1.txt
+│   ├── dvf_2020.zip
+│   ├── dvf_2021.zip
+│   ├── dvf_2022.zip
+│   ├── dvf_2023.zip
+│   ├── dvf_2024.zip
+│   ├── dvf_2025.zip
+│   ├── dvf_sample_bilingual.csv
+│   └── sample_10rows.txt
+├── project_status.md
+└── scripts
+    └── download_dvf.py
+
+5 directories, 22 files
