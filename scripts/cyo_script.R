@@ -67,6 +67,22 @@ load_dvf_file <- function(filepath) {
   )
 }
 
+## 1.5 Load Economic Data (Filosofi 2020) ----
+
+# Department-level income data
+income_dept <- read_delim(
+  file.path(DATA_RAW, "filosofi_2020", "FILO2020_DISP_DEP.csv"),
+  delim = ";",
+  show_col_types = FALSE
+)
+
+# Department-level poverty data
+poverty_dept <- read_delim(
+  file.path(DATA_RAW, "filosofi_2020", "FILO2020_DISP_PAUVRES_DEP.csv"),
+  delim = ";",
+  show_col_types = FALSE
+)
+
 # Load all DVF files (uncomment when ready to process full dataset)
 # dvf_raw <- map_dfr(dvf_files, load_dvf_file, .id = "source_file")
 
@@ -158,6 +174,36 @@ city_screening |>
          pct_age_25_54, age_norm, 
          rainfall_mm_annual, rainfall_norm) |>
   head(10)
+
+## 2.7 Add Economic Indicators ----
+
+# Extract and join economic metrics to city_screening
+economic_metrics <- income_dept |>
+  select(CODGEO, Q220, Q320) |>
+  left_join(
+    poverty_dept |> select(CODGEO, TP6020),
+    by = "CODGEO"
+  ) |>
+  # Normalize department code to match city_screening (remove leading zeros)
+  mutate(code_departement = str_remove(CODGEO, "^0")) |>
+  select(-CODGEO)
+
+# Join to city_screening and convert to numeric
+city_screening <- city_screening |>
+  mutate(code_departement = str_remove(department_code, "^0")) |>
+  left_join(economic_metrics, by = "code_departement") |>
+  mutate(
+    median_income = as.numeric(Q220),
+    affluent_income = as.numeric(Q320),
+    poverty_rate = as.numeric(TP6020)
+  ) |>
+  select(-Q220, -Q320, -TP6020, -code_departement)
+
+# Verify: cities with most affluent populations
+city_screening |>
+  select(city_name, department_name, median_income, affluent_income, poverty_rate) |>
+  arrange(desc(affluent_income)) |>
+  head(15)
 
 #-------------------------------------------------------------------------------
 # 3. DATA PREPARATION

@@ -82,6 +82,26 @@
 
 ---
 
+## Processed Data Files
+
+### city_screening.csv
+**Location:** `data/city_screening.csv`  
+**Description:** Pre-joined dataset of 55 French cities with climate, demographics, and economic indicators. All screening variables normalized to 0-1 scale.
+
+**Columns:** city_name, department_code, department_name, region_name, pop_total, pct_age_25_54, sunshine_hours_annual, avg_temp_jan, avg_temp_jul, rainfall_mm_annual, sunshine_norm, age_norm, rainfall_norm, composite_score, median_income, affluent_income, poverty_rate, affluent_norm, poverty_norm
+
+**If file is missing, regenerate by:**
+1. Open `scripts/cyo_script.R`
+2. Run Sections 0-2 (lines 1-206)
+3. Run: `write_csv(city_screening, "data/city_screening.csv")`
+
+**Load in new session:**
+```r
+city_screening <- read_csv("data/city_screening.csv")
+```
+
+---
+
 ## Personal Context (For Report Introduction)
 
 **Current Situation:** Living in Paris, planning relocation with wife
