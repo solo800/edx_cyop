@@ -76,7 +76,7 @@ load_dvf_file <- function(filepath) {
 
 ## 2.1 Define Target Departments ----
 # Initial candidates based on climate and size
-TARGET_DEPARTMENTS <- c("13", "31", "33", "34")  # Marseille, Toulouse, Bordeaux, Montpellier
+# TODO after we determine which departments to work with.
 
 ## 2.2 Climate Screening ----
 # Filter cities meeting sunshine threshold
@@ -86,20 +86,78 @@ climate_qualified <- climate |>
   filter(sunshine_hours_annual >= SUNSHINE_THRESHOLD) |>
   arrange(desc(sunshine_hours_annual))
 
-## 2.3 Demographic Screening ----
-# [TODO: Define age structure criteria]
-# - Working age population ratio
-# - Dependency ratio
-# - Population growth trends
+## 2.3 Department/Region Lookup ----
+# Get unique department-to-region mapping for joining
+dept_region_lookup <- communes |>
+  select(code_departement, nom_departement, nom_region) |>
+  distinct()
 
-## 2.4 Real Estate Market Screening ----
-# [TODO: Define market criteria]
-# - Minimum transaction volume
-# - Price stability
-# - Market liquidity
+## 2.4 Aggregate Population by Age to Department Level ----
 
-## 2.5 Final City Selection ----
-# [TODO: Combine all criteria to select final cities]
+# Calculate population totals and % aged 25-54 by department
+pop_by_dept <- pop_age |>
+  # Remove the "D" prefix from DEP to match other datasets
+  mutate(code_departement = str_remove(DEP, "^D")) |>
+  # Group by department and sum all age brackets
+  group_by(code_departement) |>
+  summarise(
+    pop_total = sum(`F0-2` + `F3-5` + `F6-10` + `F11-17` + `F18-24` + 
+                      `F25-39` + `F40-54` + `F55-64` + `F65-79` + `F80+` +
+                      `H0-2` + `H3-5` + `H6-10` + `H11-17` + `H18-24` + 
+                      `H25-39` + `H40-54` + `H55-64` + `H65-79` + `H80+`, na.rm = TRUE),
+    pop_25_54 = sum(`F25-39` + `F40-54` + `H25-39` + `H40-54`, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(pct_age_25_54 = pop_25_54 / pop_total * 100)
+
+## 2.5 Create City Screening Dataset ----
+
+# Join climate with department names and population data
+city_screening <- climate |>
+  # Remove leading zeros from department_code for matching
+  mutate(code_departement = str_remove(department_code, "^0")) |>
+  # Add department and region names
+  left_join(dept_region_lookup, by = "code_departement") |>
+  # Add population demographics
+  left_join(pop_by_dept, by = "code_departement") |>
+  # Clean up columns
+  select(
+    city_name,
+    department_code,
+    department_name = nom_departement,
+    region_name = nom_region,
+    pop_total,
+    pct_age_25_54,
+    sunshine_hours_annual,
+    avg_temp_jan,
+    avg_temp_jul,
+    rainfall_mm_annual
+  ) |>
+  arrange(desc(sunshine_hours_annual))
+
+## 2.6 Normalize Screening Variables ----
+
+city_screening <- city_screening |>
+  mutate(
+    # Normalize sunshine (higher = better) -> 0 to 1
+    sunshine_norm = (sunshine_hours_annual - min(sunshine_hours_annual, na.rm = TRUE)) /
+      (max(sunshine_hours_annual, na.rm = TRUE) - min(sunshine_hours_annual, na.rm = TRUE)),
+    
+    # Normalize age demographic (higher % working age = better) -> 0 to 1
+    age_norm = (pct_age_25_54 - min(pct_age_25_54, na.rm = TRUE)) /
+      (max(pct_age_25_54, na.rm = TRUE) - min(pct_age_25_54, na.rm = TRUE)),
+    
+    # Normalize rainfall (lower = better, so invert) -> 0 to 1
+    rainfall_norm = 1 - (rainfall_mm_annual - min(rainfall_mm_annual, na.rm = TRUE)) /
+      (max(rainfall_mm_annual, na.rm = TRUE) - min(rainfall_mm_annual, na.rm = TRUE))
+  )
+
+# Verify the new columns
+city_screening |>
+  select(city_name, sunshine_hours_annual, sunshine_norm, 
+         pct_age_25_54, age_norm, 
+         rainfall_mm_annual, rainfall_norm) |>
+  head(10)
 
 #-------------------------------------------------------------------------------
 # 3. DATA PREPARATION
