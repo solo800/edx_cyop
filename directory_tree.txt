@@ -1,0 +1,121 @@
+.
+├── cyo_edx.Rproj
+├── cyo_edx.code-workspace
+├── cyo_edx_projtree.txt
+├── data
+│   └── raw
+│       ├── Filosofi2017_carreaux_nivNaturel_met.gpkg
+│       ├── communes_2025.csv
+│       ├── filosofi_2020
+│       │   ├── FILO2020_DEC_ARR.csv
+│       │   ├── FILO2020_DEC_CTCD.csv
+│       │   ├── FILO2020_DEC_DEP.csv
+│       │   ├── FILO2020_DEC_EPCI.csv
+│       │   ├── FILO2020_DEC_EPT.csv
+│       │   ├── FILO2020_DEC_METROPOLE.csv
+│       │   ├── FILO2020_DEC_PAUVRES_ARR.csv
+│       │   ├── FILO2020_DEC_PAUVRES_CTCD.csv
+│       │   ├── FILO2020_DEC_PAUVRES_DEP.csv
+│       │   ├── FILO2020_DEC_PAUVRES_EPCI.csv
+│       │   ├── FILO2020_DEC_PAUVRES_EPT.csv
+│       │   ├── FILO2020_DEC_PAUVRES_METROPOLE.csv
+│       │   ├── FILO2020_DEC_PAUVRES_REG.csv
+│       │   ├── FILO2020_DEC_REG.csv
+│       │   ├── FILO2020_DISP_ARR.csv
+│       │   ├── FILO2020_DISP_CTCD.csv
+│       │   ├── FILO2020_DISP_DEP.csv
+│       │   ├── FILO2020_DISP_EPCI.csv
+│       │   ├── FILO2020_DISP_EPT.csv
+│       │   ├── FILO2020_DISP_METROPOLE.csv
+│       │   ├── FILO2020_DISP_PAUVRES_ARR.csv
+│       │   ├── FILO2020_DISP_PAUVRES_CTCD.csv
+│       │   ├── FILO2020_DISP_PAUVRES_DEP.csv
+│       │   ├── FILO2020_DISP_PAUVRES_EPCI.csv
+│       │   ├── FILO2020_DISP_PAUVRES_EPT.csv
+│       │   ├── FILO2020_DISP_PAUVRES_METROPOLE.csv
+│       │   ├── FILO2020_DISP_PAUVRES_REG.csv
+│       │   ├── FILO2020_DISP_REG.csv
+│       │   ├── FILO2020_TRDECILES_DEC_ARR.csv
+│       │   ├── FILO2020_TRDECILES_DEC_CTCD.csv
+│       │   ├── FILO2020_TRDECILES_DEC_DEP.csv
+│       │   ├── FILO2020_TRDECILES_DEC_EPCI.csv
+│       │   ├── FILO2020_TRDECILES_DEC_EPT.csv
+│       │   ├── FILO2020_TRDECILES_DEC_METROPOLE.csv
+│       │   ├── FILO2020_TRDECILES_DEC_REG.csv
+│       │   ├── FILO2020_TRDECILES_DISP_ARR.csv
+│       │   ├── FILO2020_TRDECILES_DISP_CTCD.csv
+│       │   ├── FILO2020_TRDECILES_DISP_DEP.csv
+│       │   ├── FILO2020_TRDECILES_DISP_EPCI.csv
+│       │   ├── FILO2020_TRDECILES_DISP_EPT.csv
+│       │   ├── FILO2020_TRDECILES_DISP_METROPOLE.csv
+│       │   ├── FILO2020_TRDECILES_DISP_REG.csv
+│       │   ├── meta_FILO2020_DEC_ARR.csv
+│       │   ├── meta_FILO2020_DEC_CTCD.csv
+│       │   ├── meta_FILO2020_DEC_DEP.csv
+│       │   ├── meta_FILO2020_DEC_EPCI.csv
+│       │   ├── meta_FILO2020_DEC_EPT.csv
+│       │   ├── meta_FILO2020_DEC_METROPOLE.csv
+│       │   ├── meta_FILO2020_DEC_PAUVRES_ARR.csv
+│       │   ├── meta_FILO2020_DEC_PAUVRES_CTCD.csv
+│       │   ├── meta_FILO2020_DEC_PAUVRES_DEP.csv
+│       │   ├── meta_FILO2020_DEC_PAUVRES_EPCI.csv
+│       │   ├── meta_FILO2020_DEC_PAUVRES_EPT.csv
+│       │   ├── meta_FILO2020_DEC_PAUVRES_METROPOLE.csv
+│       │   ├── meta_FILO2020_DEC_PAUVRES_REG.csv
+│       │   ├── meta_FILO2020_DEC_REG.csv
+│       │   ├── meta_FILO2020_DISP_ARR.csv
+│       │   ├── meta_FILO2020_DISP_CTCD.csv
+│       │   ├── meta_FILO2020_DISP_DEP.csv
+│       │   ├── meta_FILO2020_DISP_EPCI.csv
+│       │   ├── meta_FILO2020_DISP_EPT.csv
+│       │   ├── meta_FILO2020_DISP_METROPOLE.csv
+│       │   ├── meta_FILO2020_DISP_PAUVRES_ARR.csv
+│       │   ├── meta_FILO2020_DISP_PAUVRES_CTCD.csv
+│       │   ├── meta_FILO2020_DISP_PAUVRES_DEP.csv
+│       │   ├── meta_FILO2020_DISP_PAUVRES_EPCI.csv
+│       │   ├── meta_FILO2020_DISP_PAUVRES_EPT.csv
+│       │   ├── meta_FILO2020_DISP_PAUVRES_METROPOLE.csv
+│       │   ├── meta_FILO2020_DISP_PAUVRES_REG.csv
+│       │   ├── meta_FILO2020_DISP_REG.csv
+│       │   ├── meta_FILO2020_TRDECILES_DEC_ARR.csv
+│       │   ├── meta_FILO2020_TRDECILES_DEC_CTCD.csv
+│       │   ├── meta_FILO2020_TRDECILES_DEC_DEP.csv
+│       │   ├── meta_FILO2020_TRDECILES_DEC_EPCI.csv
+│       │   ├── meta_FILO2020_TRDECILES_DEC_EPT.csv
+│       │   ├── meta_FILO2020_TRDECILES_DEC_METROPOLE.csv
+│       │   ├── meta_FILO2020_TRDECILES_DEC_REG.csv
+│       │   ├── meta_FILO2020_TRDECILES_DISP_ARR.csv
+│       │   ├── meta_FILO2020_TRDECILES_DISP_CTCD.csv
+│       │   ├── meta_FILO2020_TRDECILES_DISP_DEP.csv
+│       │   ├── meta_FILO2020_TRDECILES_DISP_EPCI.csv
+│       │   ├── meta_FILO2020_TRDECILES_DISP_EPT.csv
+│       │   ├── meta_FILO2020_TRDECILES_DISP_METROPOLE.csv
+│       │   └── meta_FILO2020_TRDECILES_DISP_REG.csv
+│       ├── indic-struct-distrib-revenu-2020-SUPRA_csv.zip
+│       ├── population_age_brackets.xlsx
+│       └── sunshine_climate_france.csv
+├── directory_tree.txt
+├── local_data
+│   ├── ValeursFoncieres-2020-S2.txt
+│   ├── ValeursFoncieres-2021.txt
+│   ├── ValeursFoncieres-2022.txt
+│   ├── ValeursFoncieres-2023.txt
+│   ├── ValeursFoncieres-2024.txt
+│   ├── ValeursFoncieres-2025-S1.txt
+│   ├── dvf_2020.zip
+│   ├── dvf_2021.zip
+│   ├── dvf_2022.zip
+│   ├── dvf_2023.zip
+│   ├── dvf_2024.zip
+│   ├── dvf_2025.zip
+│   ├── dvf_sample_bilingual.csv
+│   └── sample_10rows.txt
+├── project_status.md
+├── project_status_region_selection.md
+├── reports
+│   └── cyo_report.Rmd
+└── scripts
+    ├── cyo_script.R
+    └── download_dvf.py
+
+7 directories, 112 files
