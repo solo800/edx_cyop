@@ -107,16 +107,35 @@ pct_le_pen, pct_zemmour, pct_far_right, far_right_norm
 
 ## What's In Progress
 
-### Composite Scoring (Section 2.9 — Next Up)
-- [ ] Decide on final criteria weights
-- [ ] Recalculate composite score with all 6 normalized variables
-- [ ] Generate ranked city list
-- [ ] Validate that target cities still make sense
+### Composite Scoring (Section 2.9) ✅ COMPLETE
+- [x] Experimented with multiple weighting schemes
+- [x] Recalculated composite score with all 6 normalized variables
+- [x] Generated ranked city list
+- [ ] Validate top-ranked cities and finalize target selection
 
-**Proposed weighting discussion:**
-- Sunshine is primary motivation — should be weighted highest (40-60%)
-- Politics and economics are secondary but meaningful
-- Age demographics and rainfall are tertiary
+**Weighting Iterations:**
+1. **Initial proposal:** sunshine=1.0, affluent=1.0, age=0.75, rainfall=0.5, poverty=0.5, far_right=0.5 (Total: 4.25)
+   - Result: Paris ranked #1 (too affluent/demographic heavy)
+2. **Iteration 2:** sunshine=1.0, affluent=0.5, age=0.5, rainfall=0.75, poverty=0.5, far_right=0.5 (Total: 3.75)
+   - Result: Mediterranean cities rose significantly
+3. **Final weights:** sunshine=1.0, affluent=0.5, age=0.25, rainfall=0.75, poverty=0.25, far_right=0.5 (Total: 3.25)
+   - Rationale: Sunshine is primary motivation; dry climate secondary; demographics/economics tertiary
+
+**Final Formula thus far:**
+```r
+composite_weighted = (
+  1.0 * sunshine_norm +
+  0.5 * affluent_norm +
+  0.25 * age_norm +
+  0.75 * rainfall_norm +
+  0.25 * poverty_norm +
+  0.5 * far_right_norm
+) / 3.25
+```
+
+**Key Finding:** Weighting scheme dramatically affects rankings. Climate-first approach (current weights) pushes Mediterranean cities to top; affluence-first approach favored Paris and wealthy suburbs.
+
+**Top 5 Cities (excluding Paris region):** [To be filled after validation]
 
 ---
 
@@ -143,12 +162,12 @@ pct_le_pen, pct_zemmour, pct_far_right, far_right_norm
 
 ---
 
-## Open Questions
+## Open but now Resolved Questions
 
-1. **Weighting scheme:** How to weight sunshine vs. economic factors vs. political factors?
-2. **Corsica:** Ajaccio ranks high on sunshine — include despite being an island?
-3. **Time window for DVF:** Use all 5 years (2020-2024) or focus on recent?
-4. **Train/test split:** Temporal (train on older, test on newer) or random?
+1. **Weighting scheme:** sunshine = 1.0, affluent = 1.0, age = 0.75, rainfall = 0.5, poverty = 0.5, far_right = 0.5
+2. **Corsica:** Eliminate Ajaccio despite high sunshine — island logistics impractical
+3. **Time window for DVF:** All 5 years (2020-2024), include year as feature
+4. **Train/test split:** Temporal — train on 2020-2023, test on 2024. Real estate is path-dependent; testing on newest data reflects actual use case.
 
 ---
 
@@ -191,13 +210,24 @@ cyo_edx/
 
 ## Session Notes
 
-**Feb 5, 2026 (Session 3):**
+**Feb 5, 2026:**
+
+*Session 3 (Morning) - Political Data Integration:*
 - Integrated presidential election data (2022 first round by department)
 - Fixed Section 2.8.1 join: uses `department_code` not `code_departement`
 - Added columns: `pct_le_pen`, `pct_zemmour`, `pct_far_right`, `far_right_norm`
 - Saved updated `city_screening` to `data/city_screening.csv` (23 columns)
 - Key tradeoff identified: Mediterranean = sun + politics risk; Southwest = less sun + better alignment
 - Ready for composite scoring
+
+*Session 4 (Afternoon) - Composite Score Experimentation:*
+- Calculated composite_weighted scores using multiple weighting schemes
+- Experimented with 3 different weight configurations:
+  1. Initial: sunshine=1.0, affluent=1.0, age=0.75 → Paris ranked #1
+  2. Iteration 2: sunshine=1.0, affluent=0.5, rainfall=0.75 → Mediterranean cities rose
+  3. Final: sunshine=1.0, rainfall=0.75, affluent=0.5, far_right=0.5, age=0.25, poverty=0.25
+- Key insight: Sunshine-first approach produces dramatically different rankings than affluence-first
+- Ready to validate top-ranked cities and select final targets for DVF analysis
 
 **Feb 3, 2026 (Session 2):**
 - Integrated INSEE Filosofi 2020 economic data (income + poverty)

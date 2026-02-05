@@ -297,6 +297,39 @@ city_screening |>
   arrange(desc(pct_far_right))
 
 #-------------------------------------------------------------------------------
+# SECTION 2.9: COMPOSITE SCORING
+#-------------------------------------------------------------------------------
+
+## 2.9.1 Define weights ----
+weights <- c(
+  sunshine = 1.0,
+  affluent = 1.0,
+  age = 0.75,
+  rainfall = 0.5,
+  poverty = 0.5,
+  far_right = 0.5
+)
+
+## 2.9.2 Calculate weighted composite score ----
+city_screening <- city_screening |>
+  mutate(
+    composite_score = (
+      sunshine_norm * weights["sunshine"] +
+      affluent_norm * weights["affluent"] +
+      age_norm * weights["age"] +
+      rainfall_norm * weights["rainfall"] +
+      poverty_norm * weights["poverty"] +
+      far_right_norm * weights["far_right"]
+    ) / sum(weights)
+  )
+
+## 2.9.3 Generate ranked city list ----
+city_screening |>
+  arrange(desc(composite_score)) |>
+  select(city_name, department_name, composite_score, sunshine_norm, affluent_norm, age_norm) |>
+  head(15)
+
+#-------------------------------------------------------------------------------
 # 3. DATA PREPARATION
 #-------------------------------------------------------------------------------
 
