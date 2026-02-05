@@ -83,6 +83,50 @@ poverty_dept <- read_delim(
   show_col_types = FALSE
 )
 
+#-------------------------------------------------------------------------------
+# SECTION 1.6: LOAD PRESIDENTIAL ELECTION DATA
+#-------------------------------------------------------------------------------
+# Source: Ministère de l'Intérieur - data.gouv.fr
+# Dataset: "Election présidentielle des 10 et 24 avril 2022 - Résultats définitifs du 1er tour"
+# URL: https://www.data.gouv.fr/datasets/election-presidentielle-des-10-et-24-avril-2022-resultats-definitifs-du-1er-tour
+# License: Open Licence 2.0
+
+## 1.6.1 Download election results by department ----
+election_url <- "https://www.data.gouv.fr/api/1/datasets/r/18847484-f622-4ccc-baa9-e6b12f749514"
+election_file <- file.path(DATA_RAW, "presidentielle_2022_tour1_departements.xlsx")
+
+# Download if not already present
+if (!file.exists(election_file)) {
+  download.file(election_url, election_file, mode = "wb")
+  message("Downloaded: Presidential election 2022 - 1st round by department")
+}
+
+## 1.6.2 Load and process election data ----
+# The XLSX contains vote counts by candidate for each department
+election_raw <- read_excel(election_file)
+
+# Inspect column names (they may be in French with special characters)
+# Expected columns include: Code du département, Libellé du département,
+# and then pairs of columns for each candidate: Voix, % Voix/Exp
+
+# Process to extract Le Pen (RN) vote percentage
+# Note: Marine LE PEN is typically candidate #8 in the official ordering
+election_dept <- election_raw |>
+  transmute(
+    code_departement = as.character(`Code du département`),
+    dept_name_election = `Libellé du département`,
+    pct_le_pen = as.numeric(`...47`),
+    pct_macron = as.numeric(`...35`),
+    pct_melenchon = as.numeric(`...59`),
+    pct_zemmour = as.numeric(`...53`)
+  ) |>
+  mutate(code_departement = str_remove(code_departement, "^0"))
+
+# Preview the data for target departments
+election_dept |>
+  filter(code_departement %in% c("13", "31", "33", "34")) |>
+  select(code_departement, dept_name_election, pct_le_pen, pct_macron, pct_melenchon)
+
 # Load all DVF files (uncomment when ready to process full dataset)
 # dvf_raw <- map_dfr(dvf_files, load_dvf_file, .id = "source_file")
 
@@ -204,6 +248,53 @@ city_screening |>
   select(city_name, department_name, median_income, affluent_income, poverty_rate) |>
   arrange(desc(affluent_income)) |>
   head(15)
+
+# Normalize economic indicators
+city_screening <- city_screening |>
+  mutate(
+    # Normalize affluent income (higher = better for wife's business)
+    affluent_norm = (affluent_income - min(affluent_income, na.rm = TRUE)) /
+      (max(affluent_income, na.rm = TRUE) - min(affluent_income, na.rm = TRUE)),
+    
+    # Normalize poverty rate (lower = better, so invert)
+    poverty_norm = 1 - (poverty_rate - min(poverty_rate, na.rm = TRUE)) /
+      (max(poverty_rate, na.rm = TRUE) - min(poverty_rate, na.rm = TRUE))
+  )
+
+# Verify
+city_screening |>
+  filter(city_name %in% c("Marseille", "Toulouse", "Bordeaux", "Montpellier")) |>
+  select(city_name, affluent_income, affluent_norm, poverty_rate, poverty_norm)
+
+#-------------------------------------------------------------------------------
+# SECTION 2.8: ADD POLITICAL INDICATORS TO CITY SCREENING
+#-------------------------------------------------------------------------------
+
+## 2.8.1 Join election data to city_screening ----
+city_screening <- city_screening |>
+  left_join(
+    election_dept |> select(code_departement, pct_le_pen, pct_zemmour),
+    by = c("department_code" = "code_departement")
+  ) |>
+  # Calculate combined far-right vote (RN + Reconquête)
+  mutate(
+    pct_far_right = pct_le_pen + pct_zemmour
+  )
+
+## 2.8.2 Normalize political indicator ----
+# Lower far-right vote = better (for this family's preferences)
+# Inverted normalization: 0 = highest far-right, 1 = lowest far-right
+city_screening <- city_screening |>
+  mutate(
+    far_right_norm = 1 - (pct_far_right - min(pct_far_right, na.rm = TRUE)) / 
+      (max(pct_far_right, na.rm = TRUE) - min(pct_far_right, na.rm = TRUE))
+  )
+
+## 2.8.3 Verify the join for target cities ----
+city_screening |>
+  filter(code_departement %in% c("13", "31", "33", "34")) |>
+  select(city_name, department_code, pct_le_pen, pct_zemmour, pct_far_right, far_right_norm) |>
+  arrange(desc(pct_far_right))
 
 #-------------------------------------------------------------------------------
 # 3. DATA PREPARATION
