@@ -292,7 +292,7 @@ city_screening <- city_screening |>
 
 ## 2.8.3 Verify the join for target cities ----
 city_screening |>
-  filter(code_departement %in% c("13", "31", "33", "34")) |>
+  filter(code_departement %in% c("13", "31", "33", "34", "69", "74", "75")) |>
   select(city_name, department_code, pct_le_pen, pct_zemmour, pct_far_right, far_right_norm) |>
   arrange(desc(pct_far_right))
 
@@ -301,33 +301,40 @@ city_screening |>
 #-------------------------------------------------------------------------------
 
 ## 2.9.1 Define weights ----
+# Climate-first approach: sunshine is primary motivation for leaving Paris
+# Rainfall secondary (low correlation with sunshine, captures different dimension)
+# Economics and politics tertiary
 weights <- c(
-  sunshine = 1.0,
-  affluent = 1.0,
-  age = 0.75,
-  rainfall = 0.5,
-  poverty = 0.5,
-  far_right = 0.5
+  far_right = 1,
+  sunshine  = 0.75,
+  rainfall  = 0.75,
+  affluent  = 0.75,
+  age       = 0.5,
+  poverty   = 0.25
 )
 
 ## 2.9.2 Calculate weighted composite score ----
 city_screening <- city_screening |>
   mutate(
     composite_score = (
-      sunshine_norm * weights["sunshine"] +
-      affluent_norm * weights["affluent"] +
-      age_norm * weights["age"] +
-      rainfall_norm * weights["rainfall"] +
-      poverty_norm * weights["poverty"] +
-      far_right_norm * weights["far_right"]
+      sunshine_norm  * weights["sunshine"] +
+      rainfall_norm  * weights["rainfall"] +
+      affluent_norm  * weights["affluent"] +
+      far_right_norm * weights["far_right"] +
+      age_norm       * weights["age"] +
+      poverty_norm   * weights["poverty"]
     ) / sum(weights)
   )
 
 ## 2.9.3 Generate ranked city list ----
+# Clean ranking: exclude Île-de-France and Corsica due to personal preference
 city_screening |>
+  filter(!region_name %in% c("Île-de-France", "Corse")) |>
   arrange(desc(composite_score)) |>
-  select(city_name, department_name, composite_score, sunshine_norm, affluent_norm, age_norm) |>
-  head(15)
+  mutate(rank = row_number()) |>
+  select(rank, city_name, department_name, department_code, composite_score,
+         sunshine_norm, rainfall_norm, affluent_norm, far_right_norm) |>
+  print(n = 40)
 
 #-------------------------------------------------------------------------------
 # 3. DATA PREPARATION
