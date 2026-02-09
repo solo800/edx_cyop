@@ -1,4 +1,4 @@
-# Capstone Project Status - February 5, 2026 (Updated)
+# Capstone Project Status — Region Selection (COMPLETE)
 
 **Project:** "Finding Home in France" - Data-driven city selection for relocation  
 **Course:** HarvardX PH125.9x Machine Learning Capstone (Choose Your Own)  
@@ -7,18 +7,66 @@
 
 ---
 
-## Current Phase: City Screening Analysis — Political Data Integrated
+## Phase Status: COMPLETE ✅
 
-We're in **Section 2** of the R script — building the multi-criteria city screening dataset. All screening criteria (climate, demographics, economics, politics) are now loaded and normalized.
-
-**Status:** `city_screening` tibble contains **55 rows × 23 columns** with all normalized criteria ready for composite scoring.
+City screening and composite scoring are finished. Target departments selected for DVF analysis.
 
 ---
 
-## What's Complete
+## Final Target Departments
 
-### Data Acquisition ✅
-All raw data downloaded and stored in `data/raw/`:
+| Dept | City | Composite Score | Role |
+|------|------|----------------|------|
+| 31 | Toulouse | 0.585 | #1 ranked — best balance of climate + politics |
+| 13 | Marseille | 0.566 | #2 ranked — strongest sunshine, weaker politics |
+| 69 | Lyon | 0.542 | #4 ranked — strong politics + affluence, less sun |
+| 74 | Annecy | 0.517 | #8 ranked — affluent Alpine market, small sample expected |
+| 34 | Montpellier | 0.502 | #9 ranked — Mediterranean sunshine + university city |
+| 33 | Bordeaux | 0.470 | #12 ranked — TGV to Paris, post-boom market dynamics |
+| 75 | Paris | N/A (excluded from ranking) | Benchmark — international mega-city comparison |
+
+**Exclusions applied:** Île-de-France (departing region) and Corsica (island logistics impractical) filtered from ranking. Paris included separately as benchmark only.
+
+---
+
+## Final Composite Scoring Formula
+
+```r
+weights <- c(
+  far_right = 1.00,   # Primary: political alignment (family values)
+  sunshine  = 0.75,   # Secondary: climate — main motivation for leaving Paris
+  rainfall  = 0.75,   # Secondary: dry climate (low correlation with sunshine, r = -0.16)
+  affluent  = 0.75,   # Secondary: affluent population (wife's business potential)
+  age       = 0.50,   # Tertiary: working-age demographics
+  poverty   = 0.25    # Minimal: poverty rate
+)
+# Total weight: 4.00
+
+composite_score = (
+  far_right_norm * 1.00 +
+  sunshine_norm  * 0.75 +
+  rainfall_norm  * 0.75 +
+  affluent_norm  * 0.75 +
+  age_norm       * 0.50 +
+  poverty_norm   * 0.25
+) / 4.00
+```
+
+### Weighting Evolution (5 iterations)
+
+| Iteration | Key Change | Result |
+|-----------|-----------|--------|
+| 1 | sunshine=1.0, affluent=1.0, age=0.75 | Paris #1 — too affluence-heavy |
+| 2 | Lowered affluent to 0.5, raised rainfall to 0.75 | Mediterranean cities rose |
+| 3 | Lowered age to 0.25, poverty to 0.25 | Sunshine-first: Marseille #1 |
+| 4 | Lowered affluent to 0.25, raised age to 0.5 | Climate-dominant ranking |
+| 5 (final) | Raised far_right to 1.0, affluent to 0.75 | Toulouse #1 — balanced result |
+
+**Key insight:** Weighting dramatically affects rankings. The final scheme reflects family discussions prioritizing political alignment alongside climate, with affluence restored after wife's confidence in creating a premium product regardless of local wealth levels.
+
+---
+
+## Data Acquisition — Complete ✅
 
 | File | Source | Description |
 |------|--------|-------------|
@@ -27,22 +75,19 @@ All raw data downloaded and stored in `data/raw/`:
 | `communes_2025.csv` | data.gouv.fr | Geographic reference (codes, names, coordinates) |
 | `filosofi_2020/FILO2020_DISP_DEP.csv` | INSEE Filosofi 2020 | Department-level income data |
 | `filosofi_2020/FILO2020_DISP_PAUVRES_DEP.csv` | INSEE Filosofi 2020 | Department-level poverty rates |
-| `presidentielle_2022_tour1_departements.xlsx` | Ministère de l'Intérieur | 2022 presidential election 1st round by department |
+| `presidentielle_2022_tour1_departements.xlsx` | Ministère de l'Intérieur | 2022 presidential election 1st round |
 
 DVF real estate data in `local_data/`:
-- `ValeursFoncieres-2020-S2.txt` through `ValeursFoncieres-2025-S1.txt` (6 files, several GB total)
+- `ValeursFoncieres-2020-S2.txt` through `ValeursFoncieres-2025-S1.txt` (6 files)
 
-### City Screening Dataset ✅ COMPLETE
-`city_screening` tibble contains **55 rows × 23 columns**:
-```
-city_name, department_code, department_name, region_name,
-pop_total, pct_age_25_54, sunshine_hours_annual, avg_temp_jan, avg_temp_jul, rainfall_mm_annual,
-sunshine_norm, age_norm, rainfall_norm, composite_score,
-median_income, affluent_income, poverty_rate, affluent_norm, poverty_norm,
-pct_le_pen, pct_zemmour, pct_far_right, far_right_norm
-```
+---
 
-### Normalized Variables (0-1 scale) ✅
+## City Screening Dataset
+
+`city_screening` tibble: **55 rows × 23 columns**
+
+### Normalized Variables (0-1 scale)
+
 | Variable | Raw Source | Direction |
 |----------|------------|-----------|
 | `sunshine_norm` | sunshine_hours_annual | Higher = better |
@@ -52,196 +97,87 @@ pct_le_pen, pct_zemmour, pct_far_right, far_right_norm
 | `poverty_norm` | poverty_rate (TP6020) | Lower = better (inverted) |
 | `far_right_norm` | pct_far_right (Le Pen + Zemmour) | Lower = better (inverted) |
 
-**Note:** `composite_score` exists but uses old equal-weight formula with only sunshine/age/rainfall. Needs recalculation with all 6 criteria and final weights.
+---
+
+## Key Tradeoffs Identified
+
+- **Mediterranean cities (Marseille, Montpellier):** Best sunshine but higher far-right vote share and higher poverty
+- **Southwest cities (Toulouse, Bordeaux):** Less sunshine but more politically aligned and stronger economically
+- **Alpine (Annecy):** Affluent, moderate politics, but less sunshine and high rainfall — small house market expected
+- **Lyon:** Strong all-rounder but mid-tier on sunshine
+- **Sunshine vs. rainfall:** Only r = -0.16 correlation — they measure different climate dimensions
 
 ---
 
-## Key Findings: Target City Comparison
+## Qualitative Factors Considered (Not Modeled)
 
-| City | Sunshine Norm | Affluent Norm | Poverty Norm | Far-Right Norm |
-|------|---------------|---------------|--------------|----------------|
-| Marseille | 0.97 | 0.26 | 0.68 | 0.23 |
-| Montpellier | 0.84 | 0.17 | 0.65 | 0.29 |
-| Toulouse | 0.39 | 0.33 | 0.85 | 0.62 |
-| Bordeaux | 0.39 | 0.27 | 0.89 | 0.53 |
+These were discussed but deliberately kept as qualitative assessment rather than adding analytical complexity for marginal benefit:
 
-**Key Tradeoff Identified:**
-- **Mediterranean cities (Marseille, Montpellier):** Best sunshine, but higher far-right vote share and higher poverty
-- **Southwest cities (Toulouse, Bordeaux):** Less sunshine, but more politically aligned and stronger economically
+- **International airports:** All target cities have major airports except Annecy (relies on Geneva ~45min)
+- **Mountain access:** Annecy (Alps), Toulouse (Pyrenees ~1hr) benefit; others neutral
+- **TGV connections:** All targets well-connected; Bordeaux notably 2hrs to Paris
 
 ---
 
-## Personal Context for Criteria Weighting
+## R Script Structure (Sections 0-2)
 
-**Situation:**
-- Remote work income → local wages don't affect household directly
-- Buying a house with garden → want reasonable housing prices
-- Wife plans to open pilates/yoga studio and coaching practice → needs affluent neighbors with disposable income
-- Family values alignment matters → prefer areas with lower far-right voting patterns
-
-**Implication:** Need weighted scoring that balances primary motivation (sunshine) against secondary factors (economics, politics).
-
----
-
-## R Script Structure (Updated)
-
-`scripts/cyo_script.R` sections:
-
-- **Section 0 (Lines 7-26):** Setup with `if(!require())` auto-install pattern
-- **Section 1 (Lines 28-117):** Data loading
-  - 1.1-1.4: Communes, population, climate, DVF file paths
-  - 1.5: Filosofi economic data
-  - 1.6: Presidential election data (auto-download + load)
-- **Section 2 (Lines 119-280+):** City screening
-  - 2.1: Target departments (TODO)
-  - 2.2: Climate screening
-  - 2.3: Department/region lookup
-  - 2.4: Population aggregation by age
-  - 2.5: Create city_screening dataset
-  - 2.6: Normalize climate/demographic variables
-  - 2.7: Add economic indicators + normalize
-  - 2.8: Add political indicators + normalize ✅
-- **Sections 3-6:** Stubbed for DVF processing, modeling, results
-
----
-
-## What's In Progress
-
-### Composite Scoring (Section 2.9) ✅ COMPLETE
-- [x] Experimented with multiple weighting schemes
-- [x] Recalculated composite score with all 6 normalized variables
-- [x] Generated ranked city list
-- [ ] Validate top-ranked cities and finalize target selection
-
-**Weighting Iterations:**
-1. **Initial proposal:** sunshine=1.0, affluent=1.0, age=0.75, rainfall=0.5, poverty=0.5, far_right=0.5 (Total: 4.25)
-   - Result: Paris ranked #1 (too affluent/demographic heavy)
-2. **Iteration 2:** sunshine=1.0, affluent=0.5, age=0.5, rainfall=0.75, poverty=0.5, far_right=0.5 (Total: 3.75)
-   - Result: Mediterranean cities rose significantly
-3. **Final weights:** sunshine=1.0, affluent=0.5, age=0.25, rainfall=0.75, poverty=0.25, far_right=0.5 (Total: 3.25)
-   - Rationale: Sunshine is primary motivation; dry climate secondary; demographics/economics tertiary
-
-**Final Formula thus far:**
-```r
-composite_weighted = (
-  1.0 * sunshine_norm +
-  0.5 * affluent_norm +
-  0.25 * age_norm +
-  0.75 * rainfall_norm +
-  0.25 * poverty_norm +
-  0.5 * far_right_norm
-) / 3.25
-```
-
-**Key Finding:** Weighting scheme dramatically affects rankings. Climate-first approach (current weights) pushes Mediterranean cities to top; affluence-first approach favored Paris and wealthy suburbs.
-
-**Top 5 Cities (excluding Paris region):** [To be filled after validation]
-
----
-
-## What's Not Started
-
-### Section 3: DVF Data Processing
-- [ ] Filter DVF to target departments (13, 31, 33, 34)
-- [ ] Filter to houses only (`Type local == "Maison"`)
-- [ ] Calculate median house price by department
-- [ ] Create affordability ratio: `Median House Price / affluent_income`
-- [ ] Exploratory analysis of filtered data
-
-### Section 4: Modeling
-- [ ] Train/test split (temporal or random — still TBD)
-- [ ] Linear regression baseline
-- [ ] Random Forest or XGBoost
-- [ ] K-means clustering for city similarity
-
-### Section 5-6: Results & Report
-- [ ] Model comparison metrics
-- [ ] Final visualizations
-- [ ] Write report narrative in `reports/cyo_report.Rmd`
-- [ ] Knit to PDF
-
----
-
-## Open but now Resolved Questions
-
-1. **Weighting scheme:** sunshine = 1.0, affluent = 1.0, age = 0.75, rainfall = 0.5, poverty = 0.5, far_right = 0.5
-2. **Corsica:** Eliminate Ajaccio despite high sunshine — island logistics impractical
-3. **Time window for DVF:** All 5 years (2020-2024), include year as feature
-4. **Train/test split:** Temporal — train on 2020-2023, test on 2024. Real estate is path-dependent; testing on newest data reflects actual use case.
-
----
-
-## File Locations
-```
-cyo_edx/
-├── scripts/
-│   └── cyo_script.R          # Main analysis script (current work)
-├── reports/
-│   └── cyo_report.Rmd        # Report template (sections stubbed)
-├── data/
-│   ├── city_screening.csv    # Saved screening dataset (23 columns)
-│   └── raw/
-│       ├── communes_2025.csv
-│       ├── population_age_brackets.xlsx
-│       ├── sunshine_climate_france.csv
-│       ├── presidentielle_2022_tour1_departements.xlsx
-│       └── filosofi_2020/
-│           ├── FILO2020_DISP_DEP.csv
-│           ├── FILO2020_DISP_PAUVRES_DEP.csv
-│           └── [other Filosofi files]
-├── local_data/
-│   └── ValeursFoncieres-*.txt  # DVF files (not in git)
-├── project_status.md
-└── project_status_region_selection.md
-```
-
----
-
-## To Resume
-
-1. Open RStudio project `cyo_edx.Rproj`
-2. Either:
-   - **Quick start:** `city_screening <- read_csv("data/city_screening.csv")` to load saved data
-   - **Full rebuild:** Source `scripts/cyo_script.R` through Section 2.8 to regenerate from raw data
-3. Verify with: `ncol(city_screening)` — should show 23 columns
-4. Next step: Composite scoring (Section 2.9)
+| Section | Description | Status |
+|---------|-------------|--------|
+| 0 | Setup, `if(!require())` auto-install | ✅ |
+| 1.1-1.4 | Communes, population, climate, DVF paths | ✅ |
+| 1.5 | Filosofi economic data | ✅ |
+| 1.6 | Presidential election data (auto-download) | ✅ |
+| 2.1 | Target departments definition (TARGET_DEPTS) | ✅ |
+| 2.2 | Climate screening | ✅ |
+| 2.3 | Department/region lookup | ✅ |
+| 2.4 | Population aggregation | ✅ |
+| 2.5 | Create city_screening dataset | ✅ |
+| 2.6 | Normalize climate/demographic variables | ✅ |
+| 2.7 | Economic indicators + normalize | ✅ |
+| 2.8 | Political indicators + normalize | ✅ |
+| 2.9 | Composite scoring + target confirmation | ✅ |
 
 ---
 
 ## Session Notes
 
+**Feb 9, 2026 (Session 5) — Region Selection Finalized:**
+- Ran final composite scoring with weights: far_right=1.0, sunshine=0.75, rainfall=0.75, affluent=0.75, age=0.5, poverty=0.25
+- Reviewed ranked list excluding Île-de-France and Corsica
+- Selected 5 target cities: Toulouse, Lyon, Annecy, Montpellier, Bordeaux
+- Added Paris (dept 75) as international mega-city benchmark
+- Discussed ML implications: transaction volume imbalance (Annecy small), geographic diversity aids generalization, temporal split valid across all departments
+- Considered adding airport/mountain criteria — decided to keep as qualitative factors only
+- Updated cyo_script.R: Section 2.1 (TARGET_DEPTS), 2.9 comments, verification filters, Section 3.1 default
+- Phase complete — ready for DVF data processing (Section 3)
+
 **Feb 5, 2026:**
 
-*Session 3 (Morning) - Political Data Integration:*
+*Session 3 (Morning) — Political Data Integration:*
 - Integrated presidential election data (2022 first round by department)
 - Fixed Section 2.8.1 join: uses `department_code` not `code_departement`
 - Added columns: `pct_le_pen`, `pct_zemmour`, `pct_far_right`, `far_right_norm`
 - Saved updated `city_screening` to `data/city_screening.csv` (23 columns)
 - Key tradeoff identified: Mediterranean = sun + politics risk; Southwest = less sun + better alignment
-- Ready for composite scoring
 
-*Session 4 (Afternoon) - Composite Score Experimentation:*
-- Calculated composite_weighted scores using multiple weighting schemes
-- Experimented with 3 different weight configurations:
-  1. Initial: sunshine=1.0, affluent=1.0, age=0.75 → Paris ranked #1
-  2. Iteration 2: sunshine=1.0, affluent=0.5, rainfall=0.75 → Mediterranean cities rose
-  3. Final: sunshine=1.0, rainfall=0.75, affluent=0.5, far_right=0.5, age=0.25, poverty=0.25
+*Session 4 (Afternoon) — Composite Score Experimentation:*
+- Calculated composite scores using multiple weighting schemes
+- Experimented with 5 different weight configurations (see Weighting Evolution table)
 - Key insight: Sunshine-first approach produces dramatically different rankings than affluence-first
-- Ready to validate top-ranked cities and select final targets for DVF analysis
+- Final weights reflect family discussion prioritizing political alignment
 
 **Feb 3, 2026 (Session 2):**
 - Integrated INSEE Filosofi 2020 economic data (income + poverty)
-- Added to script: Section 1.5 (data loading) and Section 2.7 (join + normalize)
-- Key columns added: `median_income`, `affluent_income` (75th percentile), `poverty_rate`, `affluent_norm`, `poverty_norm`
-- Discovered tension in criteria: sunshine-optimized cities (Marseille, Montpellier) have higher poverty; economically stronger cities (Toulouse, Bordeaux) have less sunshine
-- User's dual needs identified: remote income (local wages irrelevant) + wife's pilates business (needs affluent customers)
+- Added Section 1.5 (data loading) and Section 2.7 (join + normalize)
+- Discovered tension: sunshine-optimized cities have higher poverty; economically stronger cities have less sunshine
+- Dual needs identified: remote income (local wages irrelevant) + wife's pilates business (needs affluent customers)
 
 **Feb 2-3, 2026 (Session 1):**
-- Built city_screening dataset by joining climate (55 cities), communes (department/region lookup), and population demographics (aggregated to department level)
+- Built city_screening dataset joining climate (55 cities), communes, and population demographics
 - Verified 55 rows with all expected columns
 - Mediterranean cities dominate sunshine rankings as expected
 - Initial normalization of sunshine, age, rainfall completed
 
 ---
 
-*Status saved: February 5, 2026*
+*Phase completed: February 9, 2026*

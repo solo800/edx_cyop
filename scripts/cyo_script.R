@@ -124,7 +124,7 @@ election_dept <- election_raw |>
 
 # Preview the data for target departments
 election_dept |>
-  filter(code_departement %in% c("13", "31", "33", "34")) |>
+  filter(code_departement %in% TARGET_DEPTS) |>
   select(code_departement, dept_name_election, pct_le_pen, pct_macron, pct_melenchon)
 
 # Load all DVF files (uncomment when ready to process full dataset)
@@ -135,8 +135,19 @@ election_dept |>
 #-------------------------------------------------------------------------------
 
 ## 2.1 Define Target Departments ----
-# Initial candidates based on climate and size
-# TODO after we determine which departments to work with.
+# Final selection based on composite scoring (Section 2.9) combining climate,
+# demographics, economics, and political alignment criteria.
+# Paris (75) included as international mega-city benchmark.
+TARGET_DEPTS <- c("13", "31", "33", "34", "69", "74", "75")
+TARGET_DEPT_NAMES <- c(
+  "13" = "Bouches-du-Rhône (Marseille)",
+  "31" = "Haute-Garonne (Toulouse)",
+  "33" = "Gironde (Bordeaux)",
+  "34" = "Hérault (Montpellier)",
+  "69" = "Rhône (Lyon)",
+  "74" = "Haute-Savoie (Annecy)",
+  "75" = "Paris (benchmark)"
+)
 
 ## 2.2 Climate Screening ----
 # Filter cities meeting sunshine threshold
@@ -261,9 +272,10 @@ city_screening <- city_screening |>
       (max(poverty_rate, na.rm = TRUE) - min(poverty_rate, na.rm = TRUE))
   )
 
-# Verify
+# Verify target cities
 city_screening |>
-  filter(city_name %in% c("Marseille", "Toulouse", "Bordeaux", "Montpellier")) |>
+  filter(city_name %in% c("Marseille", "Toulouse", "Bordeaux", "Montpellier", 
+                           "Lyon", "Annecy", "Paris")) |>
   select(city_name, affluent_income, affluent_norm, poverty_rate, poverty_norm)
 
 #-------------------------------------------------------------------------------
@@ -292,7 +304,7 @@ city_screening <- city_screening |>
 
 ## 2.8.3 Verify the join for target cities ----
 city_screening |>
-  filter(code_departement %in% c("13", "31", "33", "34", "69", "74", "75")) |>
+  filter(department_code %in% TARGET_DEPTS) |>
   select(city_name, department_code, pct_le_pen, pct_zemmour, pct_far_right, far_right_norm) |>
   arrange(desc(pct_far_right))
 
@@ -301,9 +313,10 @@ city_screening |>
 #-------------------------------------------------------------------------------
 
 ## 2.9.1 Define weights ----
-# Climate-first approach: sunshine is primary motivation for leaving Paris
-# Rainfall secondary (low correlation with sunshine, captures different dimension)
-# Economics and politics tertiary
+# Political alignment is primary criterion (family values)
+# Climate factors (sunshine, rainfall) and affluence are secondary
+# Age demographics tertiary, poverty minimal weight
+# Weights iterated through multiple rounds — see project_status_region_selection.md
 weights <- c(
   far_right = 1,
   sunshine  = 0.75,
@@ -327,14 +340,25 @@ city_screening <- city_screening |>
   )
 
 ## 2.9.3 Generate ranked city list ----
-# Clean ranking: exclude Île-de-France and Corsica due to personal preference
+# Clean ranking: exclude Île-de-France and Corsica (personal constraints)
+# Île-de-France: departing region; Corsica: island logistics impractical
 city_screening |>
   filter(!region_name %in% c("Île-de-France", "Corse")) |>
   arrange(desc(composite_score)) |>
   mutate(rank = row_number()) |>
   select(rank, city_name, department_name, department_code, composite_score,
          sunshine_norm, rainfall_norm, affluent_norm, far_right_norm) |>
-  print(n = 40)
+  print(n = 15)
+
+## 2.9.4 Confirm target cities from composite ranking ----
+# Final selection: Toulouse, Lyon, Annecy, Montpellier, Bordeaux + Paris benchmark
+# Selection justified by composite score ranking and qualitative factors
+# (TGV connections, international airports, university/tech presence)
+city_screening |>
+  filter(department_code %in% TARGET_DEPTS) |>
+  arrange(desc(composite_score)) |>
+  select(city_name, department_name, department_code, composite_score,
+         sunshine_norm, rainfall_norm, affluent_norm, far_right_norm)
 
 #-------------------------------------------------------------------------------
 # 3. DATA PREPARATION
@@ -343,7 +367,9 @@ city_screening |>
 ## 3.1 DVF Data Cleaning ----
 
 # Filter to target departments and property types
-filter_dvf <- function(df, departments, type_local = "Maison", nature_mutation = "Vente") {
+# Uses TARGET_DEPTS defined in Section 2.1
+filter_dvf <- function(df, departments = TARGET_DEPTS, 
+                       type_local = "Maison", nature_mutation = "Vente") {
   df |>
     filter(
       `Code departement` %in% departments,
