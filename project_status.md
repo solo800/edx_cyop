@@ -28,6 +28,8 @@
 
 **Selection method:** Weighted composite scoring across 6 normalized criteria (political alignment, sunshine, rainfall, affluence, age demographics, poverty). See `project_status_region_selection.md` for full methodology and iteration history.
 
+**DVF & Modeling:** See `project_status_dvf_modeling.md` for granular tracking of DVF data processing, feature engineering, ML modeling, and results (Sections 3-5).
+
 ### Dataset Choice
 **Primary:** DVF (Demandes de Valeurs Foncières) from data.gouv.fr
 - Government notary records of all French property transactions
