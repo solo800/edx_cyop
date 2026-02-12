@@ -1,7 +1,7 @@
 # Capstone Project State — French Real Estate Analysis
 
-**Last Updated:** February 9, 2026  
-**Current Phase:** DVF Data Processing (Section 3)
+**Last Updated:** February 12, 2026
+**Current Phase:** EDA & Modeling Prep (Section 4)
 
 ---
 
@@ -72,16 +72,20 @@
 - [x] Commune filter lookup table saved: data/commune_filter_lookup.csv
 - [x] Sample sizes validated: ~58,500 estimated training samples (5-year total)
 - [x] Paris suburb departments (92, 93, 94) confirmed present in existing DVF files
+- [x] DVF files loaded and filtered to target communes — 68,006 house sales (2020-2024)
+- [x] Commune metadata joined (target_city, ring, commune_name) and dates parsed
+- [x] Filtered dataset saved: data/dvf_houses_filtered.csv
+- [x] Script Section 3 complete and verified
+- [x] Data cleaning complete: dedup, NA removal, outlier filtering, prix/m² trimming (68,006 → 59,373 rows, 12.7% removed)
+- [x] Clean dataset saved: data/dvf_houses_clean.csv
+- [x] Script Section 3B complete and verified
 
 ### 🔄 Next Up
-- [ ] Load all DVF files and filter using data/commune_filter_lookup.csv
-- [ ] Data cleaning (missing values, outliers)
-- [ ] Feature engineering (dates, price/m², derived variables)
-- [ ] Exploratory analysis of filtered DVF data
+- [ ] Exploratory data analysis (distributions, city comparisons, temporal trends)
+- [ ] Train/test temporal split (2020-2023 train, 2024 test)
+- [ ] Model building & comparison (linear regression, Random Forest/XGBoost, K-means)
 
 ### ⏳ Not Started
-- [ ] Feature engineering
-- [ ] Model building & comparison (linear regression, Random Forest/XGBoost, K-means)
 - [ ] Results analysis and visualization
 - [ ] Report writing (PDF + Rmd)
 - [ ] R script finalization and commenting pass
@@ -157,7 +161,7 @@ Must include:
 
 ### Code (20 pts)
 Requirements:
-- [x] Runs without errors (Sections 0-2 verified)
+- [x] Runs without errors (Sections 0-3B verified)
 - [x] Well-commented
 - [x] Relative file paths (not absolute) — uses `here::here()`
 - [x] Auto-install missing packages (`if(!require)`)

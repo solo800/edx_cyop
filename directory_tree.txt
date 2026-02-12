@@ -1,12 +1,17 @@
 .
+├── commune_v_department_filtering.md
 ├── cyo_edx.Rproj
 ├── cyo_edx.code-workspace
 ├── cyo_edx_projtree.txt
 ├── data
 │   ├── city_screening.csv
+│   ├── commune_filter_lookup.csv
 │   └── raw
 │       ├── Filosofi2017_carreaux_nivNaturel_met.gpkg
+│       ├── communes-50m.geojson
+│       ├── communes-50m.geojson.gz
 │       ├── communes_2025.csv
+│       ├── communes_geo_target_depts.gpkg
 │       ├── filosofi_2020
 │       │   ├── FILO2020_DEC_ARR.csv
 │       │   ├── FILO2020_DEC_CTCD.csv
@@ -113,11 +118,13 @@
 │   ├── dvf_sample_bilingual.csv
 │   └── sample_10rows.txt
 ├── project_status.md
+├── project_status_dvf_modeling.md
 ├── project_status_region_selection.md
 ├── reports
 │   └── cyo_report.Rmd
 └── scripts
+    ├── commune_adjacency.R
     ├── cyo_script.R
     └── download_dvf.py
 
-7 directories, 114 files
+7 directories, 121 files

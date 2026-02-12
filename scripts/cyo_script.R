@@ -361,54 +361,196 @@ city_screening |>
          sunshine_norm, rainfall_norm, affluent_norm, far_right_norm)
 
 #-------------------------------------------------------------------------------
-# 3. DATA PREPARATION
+# 3. DVF DATA LOADING & FILTERING
 #-------------------------------------------------------------------------------
+# Load 2020-2024 DVF transaction files, filter to target communes (houses only),
+# and join commune metadata (target_city, ring). Saves filtered dataset to CSV
+# so subsequent runs can skip this step.
 
-## 3.1 DVF Data Cleaning ----
+## 3.1 Load Commune Filter Lookup ----
+# 159 communes across 7 city groups (ring 0 = city proper, ring 1 = adjacent)
+# Includes Paris suburb departments (92, 93, 94)
+commune_lookup <- read_csv(
+  file.path(DATA_PROCESSED, "commune_filter_lookup.csv"),
+  col_types = cols(
+    dept_code = col_character(),
+    commune_code = col_character(),
+    insee_code = col_character()
+  )
+)
 
-# Filter to target departments and property types
-# Uses TARGET_DEPTS defined in Section 2.1
-filter_dvf <- function(df, departments = TARGET_DEPTS, 
-                       type_local = "Maison", nature_mutation = "Vente") {
-  df |>
+target_dept_codes <- unique(commune_lookup$dept_code)
+cat("Target departments:", paste(sort(target_dept_codes), collapse = ", "), "\n")
+cat("Total communes to match:", nrow(commune_lookup), "\n")
+
+## 3.2 Load and Filter DVF Files ----
+# Process each year individually to manage memory (~500-600MB per file)
+# Pre-filter by department, then match exact communes
+
+dvf_files_to_load <- list.files(
+  LOCAL_DATA,
+  pattern = "ValeursFoncieres-(2020|2021|2022|2023|2024)",
+  full.names = TRUE
+)
+cat("DVF files to load:\n")
+cat(paste(" ", basename(dvf_files_to_load)), sep = "\n")
+
+dvf_filtered_list <- map(dvf_files_to_load, function(f) {
+  cat("\nProcessing:", basename(f), "...")
+
+  raw <- load_dvf_file(f)
+  cat(" loaded", format(nrow(raw), big.mark = ","), "rows ->")
+
+  # Filter: target departments + houses + sales, then match communes
+  filtered <- raw |>
     filter(
-      `Code departement` %in% departments,
-      `Type local` == type_local,
-      `Nature mutation` == nature_mutation
-    )
-}
-
-## 3.2 Handle Missing Values ----
-# [TODO: Implement missing value strategy]
-
-## 3.3 Outlier Treatment ----
-# [TODO: Define and handle outliers in property values]
-
-## 3.4 Feature Engineering ----
-
-# Parse date and extract components
-parse_dvf_dates <- function(df) {
-  df |>
-    mutate(
-      date_mutation = dmy(`Date mutation`),
-      year = year(date_mutation),
-      month = month(date_mutation),
-      quarter = quarter(date_mutation)
-    )
-}
-
-# Calculate price per square meter
-calc_price_sqm <- function(df) {
-  df |>
-    mutate(
-      valeur_fonciere_num = as.numeric(gsub(",", ".", `Valeur fonciere`)),
-      prix_m2 = valeur_fonciere_num / `Surface reelle bati`
+      `Code departement` %in% target_dept_codes,
+      `Type local` == "Maison",
+      `Nature mutation` == "Vente"
     ) |>
-    filter(!is.na(prix_m2), is.finite(prix_m2), prix_m2 > 0)
-}
+    mutate(
+      insee_code = paste0(
+        `Code departement`,
+        str_pad(`Code commune`, 3, pad = "0")
+      )
+    ) |>
+    filter(insee_code %in% commune_lookup$insee_code)
 
-## 3.5 Merge Supplementary Data ----
-# [TODO: Join communes, population, and climate data]
+  cat(" filtered to", format(nrow(filtered), big.mark = ","), "house sales\n")
+  filtered
+})
+
+## 3.3 Combine All Years ----
+dvf_houses <- bind_rows(dvf_filtered_list)
+cat("\n=== Total filtered house sales:", format(nrow(dvf_houses), big.mark = ","), "===\n")
+
+# Free memory
+rm(dvf_filtered_list)
+
+## 3.4 Join Commune Metadata ----
+dvf_houses <- dvf_houses |>
+  left_join(
+    commune_lookup |> select(insee_code, target_city, ring, commune_name),
+    by = "insee_code"
+  )
+
+## 3.5 Parse Dates ----
+dvf_houses <- dvf_houses |>
+  mutate(
+    date_mutation = dmy(`Date mutation`),
+    year = year(date_mutation),
+    month = month(date_mutation),
+    quarter = quarter(date_mutation)
+  )
+
+## 3.6 Validation Summary ----
+cat("\n--- Transactions by city ---\n")
+dvf_houses |> count(target_city, sort = TRUE) |> print()
+
+cat("\n--- Transactions by year ---\n")
+dvf_houses |> count(year) |> print()
+
+cat("\n--- Transactions by ring ---\n")
+dvf_houses |> count(ring) |> print()
+
+## 3.7 Save Filtered Dataset ----
+write_csv(dvf_houses, file.path(DATA_PROCESSED, "dvf_houses_filtered.csv"))
+cat("\nSaved:", file.path(DATA_PROCESSED, "dvf_houses_filtered.csv"), "\n")
+
+#-------------------------------------------------------------------------------
+# 3B. DATA CLEANING
+#-------------------------------------------------------------------------------
+# Raw filtered data: 68,006 rows
+# Issues found in diagnostic:
+#   - 5,302 multi-row mutation groups (12,175 rows) — same house on multiple parcels
+#   - 64 NA prices, 7,786 NA land areas (11.4%)
+#   - Outliers: symbolic €1 sales, €84M max, 1 m² built area, 54 rooms
+
+n_start <- nrow(dvf_houses)
+
+## 3B.1 Deduplicate Multi-Parcel Rows ----
+# DVF repeats house rows when property spans multiple cadastral parcels.
+# Same price/surface/rooms, different Section/No plan. Sum land area across parcels.
+dvf_houses <- dvf_houses |>
+  group_by(`No disposition`, `Date mutation`, `Valeur fonciere`,
+           `Code departement`, `Code commune`) |>
+  summarise(
+    across(c(`Surface reelle bati`, `Nombre pieces principales`), max),
+    `Surface terrain` = sum(`Surface terrain`, na.rm = TRUE),
+    across(c(`Code postal`, Commune, insee_code, target_city, ring,
+             commune_name, date_mutation, year, month, quarter,
+             `No voie`, `Type de voie`, Voie), first),
+    n_parcels = n(),
+    .groups = "drop"
+  )
+
+cat("Dedup:", n_start, "->", nrow(dvf_houses),
+    "(removed", n_start - nrow(dvf_houses), "duplicate parcel rows)\n")
+
+## 3B.2 Drop Missing Prices ----
+dvf_houses <- dvf_houses |>
+  filter(!is.na(`Valeur fonciere`))
+
+cat("After dropping NA prices:", nrow(dvf_houses), "\n")
+
+## 3B.3 Outlier Filtering ----
+# Conservative bounds for French houses in major metros
+dvf_houses <- dvf_houses |>
+  filter(
+    `Valeur fonciere` >= 10000,          # Exclude symbolic/tax-free transfers
+    `Valeur fonciere` <= 5000000,        # Exclude mega-estates
+    `Surface reelle bati` >= 20,         # Min plausible house
+    `Surface reelle bati` <= 1000,       # Max plausible house (not château)
+    `Nombre pieces principales` >= 1,    # At least 1 room
+    `Nombre pieces principales` <= 20    # Max plausible rooms
+  )
+
+cat("After outlier filtering:", nrow(dvf_houses), "\n")
+
+## 3B.4 Feature Engineering ----
+dvf_houses <- dvf_houses |>
+  mutate(
+    prix_m2 = `Valeur fonciere` / `Surface reelle bati`,
+    has_land = !is.na(`Surface terrain`) & `Surface terrain` > 0
+  )
+
+# Remove extreme price/m² (catches remaining data quality issues)
+q01 <- quantile(dvf_houses$prix_m2, 0.01, na.rm = TRUE)
+q99 <- quantile(dvf_houses$prix_m2, 0.99, na.rm = TRUE)
+cat("Price/m² 1st-99th percentile: ", round(q01), "-", round(q99), "EUR/m²\n")
+
+dvf_houses <- dvf_houses |>
+  filter(prix_m2 >= q01, prix_m2 <= q99)
+
+cat("After prix_m2 trimming:", nrow(dvf_houses), "\n")
+
+## 3B.5 Cleaning Summary ----
+cat("\n=== CLEANING SUMMARY ===\n")
+cat("Started:", n_start, "-> Final:", nrow(dvf_houses),
+    "(", round((1 - nrow(dvf_houses)/n_start) * 100, 1), "% removed)\n")
+
+cat("\n--- Final distribution by city ---\n")
+dvf_houses |> count(target_city, sort = TRUE) |> print()
+
+cat("\n--- Final distribution by year ---\n")
+dvf_houses |> count(year) |> print()
+
+cat("\n--- Price summary by city ---\n")
+dvf_houses |>
+  group_by(target_city) |>
+  summarise(
+    n = n(),
+    median_price = median(`Valeur fonciere`),
+    median_m2 = median(prix_m2),
+    median_surface = median(`Surface reelle bati`),
+    .groups = "drop"
+  ) |>
+  arrange(desc(median_m2)) |>
+  print()
+
+## 3B.6 Save Clean Dataset ----
+write_csv(dvf_houses, file.path(DATA_PROCESSED, "dvf_houses_clean.csv"))
+cat("\nSaved:", file.path(DATA_PROCESSED, "dvf_houses_clean.csv"), "\n")
 
 #-------------------------------------------------------------------------------
 # 4. MODELING APPROACH
