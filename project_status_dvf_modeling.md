@@ -34,7 +34,8 @@ These functions exist in the script but most have not yet been called on real da
 
 | Step | Description | Status |
 |------|-------------|--------|
-| 3.1 | Filter DVF to target depts (13, 31, 33, 34, 69, 74, 75) + houses + sales | Scaffolded |
+| 3.1 | Filter DVF using commune_filter_lookup.csv (159 communes, 7 cities, depts 13/31/33/34/69/74/75 + 92/93/94 for Paris suburbs) | Ready — lookup table built |
+| 3.1b | Commune adjacency lookup (data/commune_filter_lookup.csv) | ✅ Complete |
 | 3.2 | Handle missing values | TODO |
 | 3.3 | Outlier treatment | TODO |
 | 3.4 | Feature engineering (dates, price/m²) | Partially scaffolded |
@@ -128,13 +129,47 @@ Key columns for this project are **bolded**:
 
 | Decision | Choice | Rationale | Date |
 |----------|--------|-----------|------|
-| | | | |
+| Commune filtering | Commune + adjacency ring (Option D) | City-proper alone left Paris (136), Lyon (171), Annecy (176) unusable. Adjacency ring using IGN boundary polygons adds immediate suburbs, bringing totals to ~58,500 est. 5-year samples | Feb 12, 2026 |
+| Leading zeros in commune codes | Strip from lookup to match DVF format | DVF uses "63" not "063" — join failures discovered and fixed | Feb 12, 2026 |
+| Paris extra departments | Include depts 92, 93, 94 | Paris petite couronne suburbs span 3 departments outside original 7. National DVF files already contain these — no extra downloads needed | Feb 12, 2026 |
 
 ---
 
 ## Session Notes
 
 *Session-by-session progress tracking.*
+
+### February 12, 2026 — Commune Adjacency Analysis
+
+**Goal:** Expand DVF filtering from city-proper to include adjacent suburban communes.
+
+**Approach:**
+- Downloaded IGN commune boundary polygons (communes-50m.geojson)
+- Used sf package: st_union() for arrondissement cities, st_touches() for adjacency
+- Created data/commune_filter_lookup.csv: 159 communes, ring 0 (city) + ring 1 (adjacent)
+
+**Key results (2024 house transactions):**
+
+| City | Ring 0 | Ring 1 | Total | Est. 5-Year |
+|------|--------|--------|-------|-------------|
+| Bordeaux | 961 | 1,987 | 2,948 | ~14,700 |
+| Toulouse | 1,101 | 1,241 | 2,342 | ~11,700 |
+| Marseille | 1,426 | 767 | 2,193 | ~11,000 |
+| Paris | 136 | 1,216 | 1,352 | ~6,800 |
+| Montpellier | 461 | 812 | 1,273 | ~6,400 |
+| Lyon | 171 | 921 | 1,092 | ~5,500 |
+| Annecy | 176 | 312 | 488 | ~2,400 |
+| **Total** | **4,432** | **7,256** | **11,688** | **~58,500** |
+
+**Issues found & resolved:**
+- DVF commune codes have no leading zeros; lookup CSV updated to match
+- Paris adjacent communes span depts 92/93/94 — confirmed present in existing DVF national files
+- Annecy's 2017 commune merger means ring 0 already includes former suburbs (70 km²)
+
+**Files produced:**
+- `data/commune_filter_lookup.csv` — the DVF filter lookup (159 rows)
+- `data/raw/communes_geo_target_depts.gpkg` — filtered spatial data
+- `scripts/commune_adjacency.R` — preprocessing script (run once)
 
 ---
 

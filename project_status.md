@@ -35,7 +35,7 @@
 - Government notary records of all French property transactions
 - Coverage: 2020-2024 (5 years downloaded)
 - Size: Several GB total, ~3-5M transactions/year
-- **Decision:** Filter to 7 target departments, houses only
+- **Decision:** Filter to 7 target departments + depts 92/93/94 (Paris suburbs), houses only, using commune + adjacency ring filtering (see commune_v_department_filtering.md)
 
 **Why DVF:**
 - Not a well-known/overused dataset ✔
@@ -68,11 +68,15 @@
 - [x] Composite scoring finalized after 5 weighting iterations
 - [x] Target departments selected: 13, 31, 33, 34, 69, 74, 75
 - [x] Script Sections 0-2 complete and verified
+- [x] Commune adjacency analysis complete — 159 communes across 7 city groups
+- [x] Commune filter lookup table saved: data/commune_filter_lookup.csv
+- [x] Sample sizes validated: ~58,500 estimated training samples (5-year total)
+- [x] Paris suburb departments (92, 93, 94) confirmed present in existing DVF files
 
 ### 🔄 Next Up
-- [ ] Filter DVF files to target departments (13, 31, 33, 34, 69, 74, 75)
-- [ ] Extract houses only (`Type local == "Maison"`)
+- [ ] Load all DVF files and filter using data/commune_filter_lookup.csv
 - [ ] Data cleaning (missing values, outliers)
+- [ ] Feature engineering (dates, price/m², derived variables)
 - [ ] Exploratory analysis of filtered DVF data
 
 ### ⏳ Not Started
@@ -177,11 +181,13 @@ Requirements:
 
 ## ML Considerations for Target Selection
 
-- **Transaction volume imbalance:** Lyon/Toulouse will have far more house sales than Annecy — consider department as a feature
+- **Transaction volume imbalance:** Bordeaux (~14,700) and Toulouse (~11,700) will have far more transactions than Annecy (~2,400) — consider city as a feature and monitor per-city model performance
 - **Geographic diversity:** Mediterranean, Atlantic, Alpine, and inland markets prevent overfitting to one local pattern
 - **Temporal split:** Training 2020-2023, testing 2024 — valid across all departments
 - **Bordeaux dynamics:** Post-TGV boom (2017) means 2020-2024 captures plateau/correction phase
 - **Annecy:** Premium lake/mountain market with likely high price variance and fewer transactions
+- **Commune adjacency ring:** Ring 0/1 indicator available as a feature — suburban vs city-proper may affect prices differently
+- **Paris suburbs:** Petite couronne (depts 92/93/94) included via adjacency — 90% of Paris-area house transactions are in ring 1
 
 ---
 
