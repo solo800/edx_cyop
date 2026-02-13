@@ -51,6 +51,7 @@
 ### Key Resolved Questions
 - **Time window:** All 5 years (2020-2024), include year as feature
 - **Train/test split:** Temporal — train on 2020-2023, test on 2024 (real estate is path-dependent)
+- **City sample imbalance:** Bordeaux ~14K train rows vs Annecy ~1.8K. Solution: linear regression uses `target_city` interaction terms (each city gets own slopes); tree models handle via splits naturally; all models report per-city metrics alongside overall
 - **Corsica:** Eliminated despite high sunshine — island logistics impractical
 - **Composite weights:** far_right=1.0, sunshine=0.75, rainfall=0.75, affluent=0.75, age=0.5, poverty=0.25
 
@@ -79,9 +80,10 @@
 - [x] Data cleaning complete: dedup, NA removal, outlier filtering, prix/m² trimming (68,006 → 59,373 rows, 12.7% removed)
 - [x] Clean dataset saved: data/dvf_houses_clean.csv
 - [x] Script Section 3B complete and verified
+- [x] EDA complete: 12 subsections covering distributions, city comparisons, temporal trends, ring effects, correlations, seasonality
+- [x] Script Section 3C complete (lines 555–809)
 
 ### 🔄 Next Up
-- [ ] Exploratory data analysis (distributions, city comparisons, temporal trends)
 - [ ] Train/test temporal split (2020-2023 train, 2024 test)
 - [ ] Model building & comparison (linear regression, Random Forest/XGBoost, K-means)
 
@@ -161,7 +163,7 @@ Must include:
 
 ### Code (20 pts)
 Requirements:
-- [x] Runs without errors (Sections 0-3B verified)
+- [x] Runs without errors (Sections 0-3C verified)
 - [x] Well-commented
 - [x] Relative file paths (not absolute) — uses `here::here()`
 - [x] Auto-install missing packages (`if(!require)`)
