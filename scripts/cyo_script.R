@@ -365,6 +365,16 @@ city_screening |>
 # and join commune metadata (target_city, ring). Saves filtered dataset to CSV
 # so subsequent runs can skip this step.
 
+dvf_clean_path <- file.path(DATA_PROCESSED, "dvf_houses_clean.csv")
+
+if (file.exists(dvf_clean_path)) {
+  cat("Loading cached clean dataset...\n")
+  dvf_houses <- read_csv(dvf_clean_path, show_col_types = FALSE,
+                          col_types = cols(insee_code = col_character()))
+  cat("Loaded:", nrow(dvf_houses), "rows from", dvf_clean_path, "\n")
+} else {
+  cat("Processing DVF files from scratch...\n\n")
+
 ## 3.1 Load Commune Filter Lookup ----
 # 159 communes across 7 city groups (ring 0 = city proper, ring 1 = adjacent)
 # Includes Paris suburb departments (92, 93, 94)
@@ -546,9 +556,7 @@ dvf_houses |>
   arrange(desc(median_m2)) |>
   print()
 
-## 3B.6 Save Clean Dataset ----
-write_csv(dvf_houses, file.path(DATA_PROCESSED, "dvf_houses_clean.csv"))
-cat("\nSaved:", file.path(DATA_PROCESSED, "dvf_houses_clean.csv"), "\n")
+## 3B.6 (Save moved to after 3B.7 so cached file includes income data) ----
 
 ## 3B.7 Join Commune-Level Income Data ----
 # Filosofi 2020 commune-level median income gives the model neighborhood-level
@@ -586,6 +594,12 @@ dvf_houses |>
     .groups = "drop"
   ) |>
   print()
+
+## 3B.8 Save Complete Clean Dataset ----
+write_csv(dvf_houses, dvf_clean_path)
+cat("\nSaved:", dvf_clean_path, "\n")
+
+} # end processing from scratch
 
 #-------------------------------------------------------------------------------
 # 3C. EXPLORATORY DATA ANALYSIS
@@ -1218,9 +1232,16 @@ best_k <- k_range[which.max(avg_sil)]
 cat("\nBest k by silhouette:", best_k, "(avg silhouette:",
     round(max(avg_sil), 3), ")\n")
 
+# Override: k=6 maximises silhouette but produces singleton/tiny clusters
+# (1-2 communes) that aren't interpretable. k=4 has nearly identical
+# silhouette (0.404 vs 0.414) while producing actionable market tiers.
+FINAL_K <- 4
+cat("Selected k:", FINAL_K,
+    "(silhouette-optimal k =", best_k, "overridden — see rationale above)\n")
+
 # --- Step 4: Run final K-means ---
 set.seed(42)
-km_fit <- kmeans(commune_scaled, centers = best_k, nstart = 25)
+km_fit <- kmeans(commune_scaled, centers = FINAL_K, nstart = 25)
 commune_summary$cluster <- factor(km_fit$cluster)
 
 cat("\n--- Cluster sizes ---\n")
@@ -1290,7 +1311,7 @@ ggplot(city_cluster, aes(x = target_city, y = n, fill = cluster)) +
 
 # 5d. Narrative summary
 cat("\n--- K-Means clustering summary ---\n")
-cat("K-means clustering (k =", best_k, ") grouped", nrow(commune_summary),
+cat("K-means clustering (k =", FINAL_K, ") grouped", nrow(commune_summary),
     "communes into distinct market tiers\n")
 cat("based on 6 features: price/m², surface area, rooms, land area,",
     "transaction volume, and income.\n\n")

@@ -1,7 +1,7 @@
 # Capstone Project State — French Real Estate Analysis
 
-**Last Updated:** February 12, 2026
-**Current Phase:** EDA & Modeling Prep (Section 4)
+**Last Updated:** February 16, 2026
+**Current Phase:** Results & Report (Section 5)
 
 ---
 
@@ -43,10 +43,10 @@
 - Publicly available, can be auto-downloaded ✔
 - Personal relevance creates strong narrative ✔
 
-### Modeling Plan (Satisfies 2+ Algorithms Requirement)
-1. **Baseline:** Linear regression (price prediction)
-2. **Advanced:** Random Forest or XGBoost (price prediction)
-3. **Additional:** K-means clustering (city similarity analysis)
+### Modeling (Satisfies 2+ Algorithms Requirement)
+1. **Baseline:** Linear regression (price prediction) — R²=0.596
+2. **Advanced:** Random Forest (R²=0.676) + XGBoost (R²=0.679, best model)
+3. **Unsupervised:** K-means clustering (commune-level market tiers, k=4)
 
 ### Key Resolved Questions
 - **Time window:** All 5 years (2020-2024), include year as feature
@@ -77,18 +77,24 @@
 - [x] Commune metadata joined (target_city, ring, commune_name) and dates parsed
 - [x] Filtered dataset saved: data/dvf_houses_filtered.csv
 - [x] Script Section 3 complete and verified
+- [x] Quick-start cache: if `dvf_houses_clean.csv` exists, skip Sections 3.1-3B.7 and load directly
 - [x] Data cleaning complete: dedup, NA removal, outlier filtering, prix/m² trimming (68,006 → 59,373 rows, 12.7% removed)
 - [x] Clean dataset saved: data/dvf_houses_clean.csv
 - [x] Script Section 3B complete and verified
 - [x] EDA complete: 12 subsections covering distributions, city comparisons, temporal trends, ring effects, correlations, seasonality
-- [x] Script Section 3C complete (lines 555–809)
+- [x] Script Section 3C complete
+- [x] Train/test temporal split (2020-2023 train, 2024 test) — 49,269 / 10,104
+- [x] Linear Regression: R²=0.596 (interaction terms: city × surface + city × ring)
+- [x] Random Forest: R²=0.676 (500 trees, mtry=3)
+- [x] XGBoost: R²=0.679 (best model, 115 rounds early stopped)
+- [x] K-Means Clustering: k=4, commune-level market tiers from 6 features
+- [x] Script Section 4 complete and verified
 
 ### 🔄 Next Up
-- [ ] Train/test temporal split (2020-2023 train, 2024 test)
-- [ ] Model building & comparison (linear regression, Random Forest/XGBoost, K-means)
+- [ ] Section 5.2: Model comparison summary & visualization
+- [ ] Section 5.3: City rankings / final recommendations
 
 ### ⏳ Not Started
-- [ ] Results analysis and visualization
 - [ ] Report writing (PDF + Rmd)
 - [ ] R script finalization and commenting pass
 
@@ -163,7 +169,7 @@ Must include:
 
 ### Code (20 pts)
 Requirements:
-- [x] Runs without errors (Sections 0-3C verified)
+- [x] Runs without errors (Sections 0-4.7 verified)
 - [x] Well-commented
 - [x] Relative file paths (not absolute) — uses `here::here()`
 - [x] Auto-install missing packages (`if(!require)`)

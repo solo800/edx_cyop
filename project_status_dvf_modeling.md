@@ -71,8 +71,7 @@ These functions exist in the script but most have not yet been called on real da
 | 4.4 | Linear regression with interaction terms | ✅ Complete — R²=0.596 |
 | 4.5 | Random Forest (500 trees) | ✅ Complete — R²=0.676 |
 | 4.6 | XGBoost (early stopping at 115 rounds) | ✅ Complete — R²=0.679 |
-| 4.7 | K-means clustering (city similarity) | TODO |
-| 4.8 | Model comparison summary & visualization | TODO |
+| 4.7 | K-means clustering (commune-level, k=4, 6 features) | ✅ Complete — 4 market tiers across ~100+ communes |
 
 ---
 
@@ -83,6 +82,15 @@ These functions exist in the script but most have not yet been called on real da
 | 5.1 | EDA visualizations | ✅ Complete (Section 3C) |
 | 5.2 | Model performance comparison | TODO |
 | 5.3 | City rankings / recommendations | TODO |
+
+---
+
+## Infrastructure Improvements
+
+| Change | Description | Date |
+|--------|-------------|------|
+| Quick-start cache | Section 3 wrapped in `if/else`: loads `dvf_houses_clean.csv` directly if it exists, skipping DVF file processing (3.1-3B.7). Save moved to after income join (3B.8) so cached file is complete. | Feb 16, 2026 |
+| `cluster` package | Added `if(!require(cluster))` to Section 0 for silhouette analysis in K-means | Feb 16, 2026 |
 
 ---
 
@@ -443,7 +451,28 @@ Key columns for this project are **bolded**:
 
 **Feature importance (XGBoost by gain):** surface (36.5%) > **median_income (19.2%)** > target_cityParis (13.7%) > rooms (12.2%) > land (8.0%) > ring (4.8%)
 
-**Still TODO:** K-means clustering (4.7), model comparison visualization (4.8), results/report
+**Still TODO at that time:** K-means clustering (4.7), model comparison visualization, results/report
+
+### February 16, 2026 — K-Means Clustering & Quick-Start Cache
+
+**Goal:** Implement Section 4.7 (K-means as unsupervised complement to supervised models) and add a quick-start cache to skip slow DVF file loading on re-runs.
+
+**K-Means Clustering (Section 4.7):**
+- Aggregated 59,373 transactions to commune level: median price/m², surface, rooms, land, transaction count, income
+- Filtered to communes with >= 10 transactions for stable aggregates
+- Scaled 6 features with `scale()` (mean=0, sd=1)
+- Tested k=2..8 via elbow (WSS) and silhouette analysis
+- Silhouette-optimal k=6 produced singleton/tiny clusters; overridden to k=4 (silhouette 0.404 vs 0.414) for interpretable market tiers
+- PCA biplot (PC1 vs PC2, colored by cluster, shaped by city)
+- Cluster centroids table in original units
+- City × cluster stacked bar chart showing market homogeneity/diversity per city
+
+**Quick-Start Cache:**
+- Wrapped Sections 3.1-3B.7 in `if (file.exists(dvf_clean_path)) / else` block
+- If `data/dvf_houses_clean.csv` exists: loads in ~2 seconds instead of ~60+ seconds of DVF file processing
+- Moved CSV save from 3B.6 (before income join) to 3B.8 (after income join) so cached file includes `median_income_commune`
+
+**Still TODO:** Section 5.2 (model comparison visualization), Section 5.3 (city rankings), report writing
 
 ---
 
