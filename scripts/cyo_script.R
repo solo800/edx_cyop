@@ -16,6 +16,7 @@ if(!require(lubridate)) install.packages("lubridate", repos = "http://cran.us.r-
 if(!require(here)) install.packages("here", repos = "http://cran.us.r-project.org")
 if(!require(randomForest)) install.packages("randomForest", repos = "http://cran.us.r-project.org")
 if(!require(xgboost)) install.packages("xgboost", repos = "http://cran.us.r-project.org")
+if(!require(cluster)) install.packages("cluster", repos = "http://cran.us.r-project.org")
 
 # Set paths
 # Run this from the project root directory
@@ -1142,7 +1143,165 @@ cat("\n--- XGBoost feature importance (top 10 by gain) ---\n")
 xgb.importance(model = xgb_fit) |> head(10) |> print()
 
 ## 4.7 K-Means Clustering ----
-# [TODO]
+# Unsupervised approach: cluster communes by real estate market characteristics
+# to reveal market tiers that span cities.
+
+cat("\n=== K-MEANS CLUSTERING ===\n")
+
+# --- Step 1: Aggregate transactions to commune level ---
+commune_summary <- dvf_houses |>
+  group_by(insee_code, commune_name, target_city, ring) |>
+  summarise(
+    median_prix_m2 = median(prix_m2, na.rm = TRUE),
+    median_surface = median(`Surface reelle bati`, na.rm = TRUE),
+    median_rooms   = median(`Nombre pieces principales`, na.rm = TRUE),
+    median_land    = median(`Surface terrain`, na.rm = TRUE),
+    n_transactions = n(),
+    median_income  = median(median_income_commune, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  filter(n_transactions >= 10, !is.na(median_income))
+
+cat("Communes with >= 10 transactions:", nrow(commune_summary), "\n")
+cat("\n--- Communes per city ---\n")
+commune_summary |> count(target_city, sort = TRUE) |> print()
+
+# --- Step 2: Scale features ---
+cluster_features <- c("median_prix_m2", "median_surface", "median_rooms",
+                       "median_land", "n_transactions", "median_income")
+commune_scaled <- scale(commune_summary[, cluster_features])
+
+cat("\nClustering features (", length(cluster_features), "):",
+    paste(cluster_features, collapse = ", "), "\n")
+
+# --- Step 3: Determine optimal k ---
+set.seed(42)
+k_range <- 2:8
+
+# Total within-cluster sum of squares for each k
+wss <- sapply(k_range, function(k) {
+  kmeans(commune_scaled, centers = k, nstart = 25)$tot.withinss
+})
+
+# Average silhouette width for each k
+avg_sil <- sapply(k_range, function(k) {
+  km <- kmeans(commune_scaled, centers = k, nstart = 25)
+  ss <- cluster::silhouette(km$cluster, dist(commune_scaled))
+  mean(ss[, "sil_width"])
+})
+
+elbow_data <- tibble(k = k_range, wss = wss, silhouette = avg_sil)
+
+cat("\n--- Elbow & silhouette analysis ---\n")
+elbow_data |> mutate(across(c(wss, silhouette), ~round(., 3))) |> print()
+
+# Elbow plot
+ggplot(elbow_data, aes(x = k, y = wss)) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 3) +
+  scale_x_continuous(breaks = k_range) +
+  labs(title = "K-Means: Elbow Method",
+       x = "Number of Clusters (k)", y = "Total Within-Cluster SS") +
+  theme_minimal(base_size = 12)
+
+# Silhouette plot
+ggplot(elbow_data, aes(x = k, y = silhouette)) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 3) +
+  scale_x_continuous(breaks = k_range) +
+  labs(title = "K-Means: Average Silhouette Width",
+       x = "Number of Clusters (k)", y = "Avg. Silhouette Width") +
+  theme_minimal(base_size = 12)
+
+# Select best k (highest silhouette)
+best_k <- k_range[which.max(avg_sil)]
+cat("\nBest k by silhouette:", best_k, "(avg silhouette:",
+    round(max(avg_sil), 3), ")\n")
+
+# --- Step 4: Run final K-means ---
+set.seed(42)
+km_fit <- kmeans(commune_scaled, centers = best_k, nstart = 25)
+commune_summary$cluster <- factor(km_fit$cluster)
+
+cat("\n--- Cluster sizes ---\n")
+table(commune_summary$cluster) |> print()
+
+# --- Step 5: Analyze & visualize ---
+
+# 5a. PCA biplot
+pca_fit <- prcomp(commune_scaled)
+pca_var <- summary(pca_fit)$importance[2, 1:2]  # proportion of variance
+
+pca_df <- tibble(
+  PC1 = pca_fit$x[, 1],
+  PC2 = pca_fit$x[, 2],
+  cluster = commune_summary$cluster,
+  target_city = commune_summary$target_city,
+  commune_name = commune_summary$commune_name
+)
+
+ggplot(pca_df, aes(x = PC1, y = PC2, color = cluster, shape = target_city)) +
+  geom_point(size = 2.5, alpha = 0.8) +
+  scale_shape_manual(values = c(16, 17, 15, 3, 7, 8, 18)) +
+  labs(title = "K-Means Clusters: PCA Biplot",
+       x = paste0("PC1 (", round(pca_var[1] * 100, 1), "% variance)"),
+       y = paste0("PC2 (", round(pca_var[2] * 100, 1), "% variance)"),
+       color = "Cluster", shape = "City") +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom",
+        legend.box = "vertical")
+
+# 5b. Cluster centroids (original units)
+centroids <- commune_summary |>
+  group_by(cluster) |>
+  summarise(
+    n_communes     = n(),
+    median_prix_m2 = round(mean(median_prix_m2)),
+    median_surface = round(mean(median_surface)),
+    median_rooms   = round(mean(median_rooms), 1),
+    median_land    = round(mean(median_land)),
+    n_transactions = round(mean(n_transactions)),
+    median_income  = round(mean(median_income)),
+    .groups = "drop"
+  ) |>
+  arrange(desc(median_prix_m2))
+
+cat("\n--- Cluster centroids (original units) ---\n")
+centroids |> print()
+
+# 5c. City × cluster distribution
+city_cluster <- commune_summary |>
+  count(target_city, cluster) |>
+  group_by(target_city) |>
+  mutate(pct = n / sum(n)) |>
+  ungroup()
+
+cat("\n--- City x cluster distribution ---\n")
+city_cluster |> print(n = Inf)
+
+ggplot(city_cluster, aes(x = target_city, y = n, fill = cluster)) +
+  geom_col(position = "fill") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(title = "Market Cluster Distribution by City",
+       x = NULL, y = "Proportion of Communes", fill = "Cluster") +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1),
+        legend.position = "bottom")
+
+# 5d. Narrative summary
+cat("\n--- K-Means clustering summary ---\n")
+cat("K-means clustering (k =", best_k, ") grouped", nrow(commune_summary),
+    "communes into distinct market tiers\n")
+cat("based on 6 features: price/m², surface area, rooms, land area,",
+    "transaction volume, and income.\n\n")
+cat("The PCA biplot shows that the first two principal components capture\n")
+cat(round(sum(pca_var) * 100, 1), "% of the total variance, providing a\n")
+cat("meaningful 2D projection of the cluster structure.\n\n")
+cat("The city x cluster distribution reveals which cities have homogeneous\n")
+cat("markets (dominated by one cluster) vs. diverse markets (spread across\n")
+cat("multiple tiers). This complements the supervised models by showing\n")
+cat("that communes within the same city can belong to very different market\n")
+cat("segments — relevant for the relocation decision.\n")
 
 #-------------------------------------------------------------------------------
 # 5. RESULTS
