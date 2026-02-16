@@ -1324,6 +1324,38 @@ cat("multiple tiers). This complements the supervised models by showing\n")
 cat("that communes within the same city can belong to very different market\n")
 cat("segments — relevant for the relocation decision.\n")
 
+## 4.8 Save/Load Model Checkpoint ----
+# Saves all objects needed for Section 5+ so you can skip re-training.
+# First run: trains models and saves checkpoint.
+# Later runs: loads checkpoint in seconds.
+
+checkpoint_path <- file.path(DATA_PROCESSED, "model_checkpoint.RDS")
+
+if (file.exists(checkpoint_path) && !exists("lm_fit")) {
+  cat("Loading model checkpoint...\n")
+  checkpoint <- readRDS(checkpoint_path)
+  list2env(checkpoint, envir = .GlobalEnv)
+  cat("Restored:", paste(names(checkpoint), collapse = ", "), "\n")
+} else if (exists("lm_fit")) {
+  cat("Saving model checkpoint...\n")
+  saveRDS(
+    list(
+      all_results    = all_results,
+      lm_fit         = lm_fit,
+      rf_fit         = rf_fit,
+      xgb_fit        = xgb_fit,
+      test_model     = test_model,
+      xgb_pred_test  = xgb_pred_test,
+      rf_pred_test   = rf_pred_test,
+      lm_pred_test   = lm_pred_test,
+      city_colors    = city_colors,
+      dvf_houses     = dvf_houses
+    ),
+    checkpoint_path
+  )
+  cat("Saved to:", checkpoint_path, "\n")
+}
+
 #-------------------------------------------------------------------------------
 # 5. RESULTS
 #-------------------------------------------------------------------------------
@@ -1331,8 +1363,251 @@ cat("segments — relevant for the relocation decision.\n")
 ## 5.1 EDA Visualizations ----
 # [TODO: Create key visualizations]
 
-## 5.2 Model Comparison ----
-# [TODO: Compare model performance]
+## 5.2 Model Performance Comparison ----
+
+cat("\n=== MODEL PERFORMANCE COMPARISON ===\n")
+
+### 5.2.1 Overall Model Comparison Table ----
+
+cat("\n--- Overall model metrics (test set: 2024) ---\n")
+
+overall <- all_results |>
+  filter(scope == "Overall") |>
+  mutate(
+    rmse_fmt = paste0("€", scales::comma(round(rmse))),
+    mae_fmt  = paste0("€", scales::comma(round(mae))),
+    r2_fmt   = sprintf("%.3f", r2)
+  )
+
+overall |>
+  select(model, n, rmse_fmt, mae_fmt, r2_fmt) |>
+  print()
+
+# Improvement of XGBoost over Linear Regression
+lm_overall  <- overall |> filter(model == "Linear Regression")
+xgb_overall <- overall |> filter(model == "XGBoost")
+
+rmse_reduction_pct <- (lm_overall$rmse - xgb_overall$rmse) / lm_overall$rmse * 100
+r2_gain <- xgb_overall$r2 - lm_overall$r2
+
+cat("\n--- XGBoost vs Linear Regression ---\n")
+cat("RMSE reduction:", round(rmse_reduction_pct, 1), "%\n")
+cat("R² improvement:", sprintf("+%.3f", r2_gain),
+    paste0("(", round(lm_overall$r2, 3), " → ", round(xgb_overall$r2, 3), ")"), "\n")
+
+### 5.2.2 Overall Model Comparison — R² Bar Chart ----
+
+# Horizontal bar chart of R² across the 3 models
+overall_plot <- overall |>
+  mutate(model = fct_reorder(model, r2))
+
+ggplot(overall_plot, aes(x = model, y = r2, fill = model)) +
+  geom_col(width = 0.6) +
+  geom_text(aes(label = sprintf("%.3f", r2)), hjust = -0.15, size = 4) +
+  coord_flip(ylim = c(0, max(overall$r2) * 1.12)) +
+  scale_fill_manual(values = c(
+    "Linear Regression" = "#457B9D",
+    "Random Forest"     = "#2A9D8F",
+    "XGBoost"           = "#E63946"
+  )) +
+  labs(
+    title = "Overall R² by Model (Test Set: 2024)",
+    x = NULL, y = "R²"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+
+### 5.2.3 Per-City R² Comparison ----
+
+# Order cities by XGBoost R²
+xgb_city_order <- all_results |>
+  filter(model == "XGBoost", scope != "Overall") |>
+  arrange(r2) |>
+  pull(scope)
+
+per_city <- all_results |>
+  filter(scope != "Overall") |>
+  mutate(scope = factor(scope, levels = xgb_city_order))
+
+# Overall XGBoost R² for reference line
+xgb_overall_r2 <- xgb_overall$r2
+
+model_colors <- c(
+  "Linear Regression" = "#457B9D",
+  "Random Forest"     = "#2A9D8F",
+  "XGBoost"           = "#E63946"
+)
+
+ggplot(per_city, aes(x = scope, y = r2, fill = model)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+  geom_hline(yintercept = xgb_overall_r2, linetype = "dashed",
+             color = "grey30", linewidth = 0.5) +
+  annotate("text", x = 0.5, y = xgb_overall_r2 + 0.015,
+           label = paste0("Overall R² = ", round(xgb_overall_r2, 3)),
+           hjust = 0, size = 3.2, color = "grey30") +
+  scale_fill_manual(values = model_colors) +
+  labs(
+    title = "R² by City and Model",
+    subtitle = "Dashed line = XGBoost overall R²",
+    x = NULL, y = "R²", fill = "Model"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom",
+        axis.text.x = element_text(angle = 30, hjust = 1))
+
+### 5.2.4 Feature Importance Comparison (RF vs XGBoost) ----
+
+cat("\n--- Feature importance comparison ---\n")
+
+# RF importance: %IncMSE, normalized to proportions
+rf_imp <- importance(rf_fit) |>
+  as.data.frame() |>
+  rownames_to_column("feature") |>
+  select(feature, importance = `%IncMSE`) |>
+  mutate(importance = importance / sum(importance),
+         model = "Random Forest")
+
+# XGBoost importance: Gain column (already proportions)
+xgb_imp_raw <- xgb.importance(model = xgb_fit) |>
+  select(feature = Feature, importance = Gain)
+
+# Group one-hot encoded features back to original names
+# target_cityParis, target_cityLyon, etc. → "target_city"
+xgb_imp <- xgb_imp_raw |>
+  mutate(
+    feature = case_when(
+      str_detect(feature, "^target_city") ~ "target_city",
+      TRUE ~ feature
+    )
+  ) |>
+  group_by(feature) |>
+  summarise(importance = sum(importance), .groups = "drop") |>
+  mutate(model = "XGBoost")
+
+# Combine and create unified feature set
+fi_combined <- bind_rows(rf_imp, xgb_imp)
+
+# Rank by average importance across both models
+feature_order <- fi_combined |>
+  group_by(feature) |>
+  summarise(avg = mean(importance), .groups = "drop") |>
+  arrange(avg) |>
+  pull(feature)
+
+fi_combined <- fi_combined |>
+  mutate(feature = factor(feature, levels = feature_order))
+
+cat("Feature importance (combined):\n")
+fi_combined |>
+  mutate(importance = round(importance, 3)) |>
+  pivot_wider(names_from = model, values_from = importance) |>
+  arrange(desc(`XGBoost`)) |>
+  print()
+
+# Side-by-side horizontal bar chart
+ggplot(fi_combined, aes(x = feature, y = importance, fill = model)) +
+  geom_col(width = 0.7) +
+  coord_flip() +
+  facet_wrap(~model) +
+  scale_fill_manual(values = c(
+    "Random Forest" = "#2A9D8F",
+    "XGBoost"       = "#E63946"
+  )) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    title = "Feature Importance: Random Forest vs XGBoost",
+    subtitle = "RF = %IncMSE (normalized) | XGBoost = Gain (proportional)",
+    x = NULL, y = "Relative Importance"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+
+### 5.2.5 Residual Analysis (XGBoost) ----
+
+cat("\n--- Residual analysis (XGBoost) ---\n")
+
+# Calculate residuals
+residual_df <- test_model |>
+  mutate(
+    predicted = xgb_pred_test,
+    residual  = price - xgb_pred_test
+  )
+
+# Sample for readability
+set.seed(42)
+resid_sample <- residual_df |> slice_sample(n = min(3000, nrow(residual_df)))
+
+ggplot(resid_sample, aes(x = predicted, y = residual, color = target_city)) +
+  geom_point(alpha = 0.3, size = 1) +
+  geom_hline(yintercept = 0, linewidth = 0.6, color = "black") +
+  scale_x_continuous(labels = scales::comma_format(prefix = "€")) +
+  scale_y_continuous(labels = scales::comma_format(prefix = "€")) +
+  scale_color_manual(values = city_colors) +
+  labs(
+    title = "Residual Plot: XGBoost Predictions vs Errors",
+    subtitle = paste0("Sample of ", nrow(resid_sample), " test-set transactions"),
+    x = "Predicted Price", y = "Residual (Actual − Predicted)", color = "City"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom")
+
+cat("Residuals show mild heteroscedasticity — variance increases with predicted price,",
+    "typical for real estate models where high-value properties are harder to price.\n")
+
+### 5.2.6 Impact of Median Income Feature ----
+
+cat("\n--- Impact of commune-level median income ---\n")
+
+# "Before" values (from prior run without median_income)
+before <- tibble(
+  model = c("Linear Regression", "Random Forest", "XGBoost"),
+  r2_before   = c(0.554, 0.597, 0.599),
+  rmse_before = c(263169, 250315, 249607)
+)
+
+# "After" values from current results
+after <- all_results |>
+  filter(scope == "Overall") |>
+  select(model, r2_after = r2, rmse_after = rmse)
+
+income_impact <- before |>
+  left_join(after, by = "model") |>
+  mutate(
+    r2_gain   = r2_after - r2_before,
+    rmse_drop = rmse_before - rmse_after,
+    rmse_drop_pct = rmse_drop / rmse_before * 100
+  )
+
+# Print summary
+income_impact |>
+  mutate(
+    across(starts_with("r2"), ~sprintf("%.3f", .)),
+    rmse_before = paste0("€", scales::comma(round(rmse_before))),
+    rmse_after  = paste0("€", scales::comma(round(rmse_after))),
+    rmse_drop   = paste0("€", scales::comma(round(rmse_drop))),
+    rmse_drop_pct = paste0(round(as.numeric(rmse_drop_pct), 1), "%")
+  ) |>
+  print()
+
+# Before/after R² grouped bar chart
+income_plot_data <- income_impact |>
+  select(model, Before = r2_before, After = r2_after) |>
+  pivot_longer(cols = c(Before, After), names_to = "stage", values_to = "value") |>
+  mutate(stage = factor(stage, levels = c("Before", "After")))
+
+ggplot(income_plot_data, aes(x = model, y = value, fill = stage)) +
+  geom_col(position = position_dodge(width = 0.7), width = 0.6) +
+  geom_text(aes(label = sprintf("%.3f", value)),
+            position = position_dodge(width = 0.7), vjust = -0.5, size = 3.5) +
+  scale_fill_manual(values = c("Before" = "#ADB5BD", "After" = "#E63946")) +
+  scale_y_continuous(limits = c(0, max(income_plot_data$value) * 1.1)) +
+  labs(
+    title = "Impact of Adding Commune-Level Median Income",
+    subtitle = "R² before vs after adding median_income feature",
+    x = NULL, y = "R²", fill = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom")
 
 ## 5.3 City Rankings ----
 # [TODO: Generate final rankings]

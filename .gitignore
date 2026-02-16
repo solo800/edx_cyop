@@ -3,3 +3,4 @@ cyo_edx.Rproj
 .Rproj.user/
 local_data/
 data/raw/
+*.RDS
