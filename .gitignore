@@ -2,5 +2,19 @@ cyo_edx.code-workspace
 cyo_edx.Rproj
 .Rproj.user/
 local_data/
-data/raw/
 *.RDS
+
+# Ignore raw data contents by default (large GeoPackages, GeoJSON, zips)
+# but allow the specific files required by cyo_script.R
+data/raw/*
+!data/raw/communes_2025.csv
+!data/raw/sunshine_climate_france.csv
+!data/raw/population_age_brackets.xlsx
+!data/raw/presidentielle_2022_tour1_departements.xlsx
+!data/raw/filosofi_2020/
+data/raw/filosofi_2020/*
+!data/raw/filosofi_2020/FILO2020_DISP_DEP.csv
+!data/raw/filosofi_2020/FILO2020_DISP_PAUVRES_DEP.csv
+!data/raw/filosofi_2020_commune/
+data/raw/filosofi_2020_commune/*
+!data/raw/filosofi_2020_commune/base-cc-filosofi-2020-geo2023.xlsx
