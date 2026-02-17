@@ -1,13 +1,20 @@
 .
+├── Rplots.pdf
 ├── commune_v_department_filtering.md
 ├── cyo_edx.Rproj
 ├── cyo_edx.code-workspace
 ├── cyo_edx_projtree.txt
+├── cyo_grading_rubric.md
+├── cyo_project_instructions.md
 ├── data
 │   ├── city_screening.csv
 │   ├── commune_filter_lookup.csv
+│   ├── dvf_houses_clean.csv
+│   ├── dvf_houses_filtered.csv
+│   ├── model_checkpoint.RDS
 │   └── raw
 │       ├── Filosofi2017_carreaux_nivNaturel_met.gpkg
+│       ├── base-cc-filosofi-2020_XLSX.zip
 │       ├── communes-50m.geojson
 │       ├── communes-50m.geojson.gz
 │       ├── communes_2025.csv
@@ -97,11 +104,15 @@
 │       │   ├── meta_FILO2020_TRDECILES_DISP_EPT.csv
 │       │   ├── meta_FILO2020_TRDECILES_DISP_METROPOLE.csv
 │       │   └── meta_FILO2020_TRDECILES_DISP_REG.csv
+│       ├── filosofi_2020_commune
+│       │   ├── base-cc-filosofi-2020-geo2023.xlsx
+│       │   └── base_cc_BDFDOM-2017.xlsx
 │       ├── indic-struct-distrib-revenu-2020-SUPRA_csv.zip
 │       ├── population_age_brackets.xlsx
 │       ├── presidentielle_2022_tour1_departements.xlsx
 │       └── sunshine_climate_france.csv
 ├── directory_tree.txt
+├── k-means clustering.png
 ├── local_data
 │   ├── ValeursFoncieres-2020-S2.txt
 │   ├── ValeursFoncieres-2021.txt
@@ -117,14 +128,19 @@
 │   ├── dvf_2025.zip
 │   ├── dvf_sample_bilingual.csv
 │   └── sample_10rows.txt
+├── multi-city_comparison.png
+├── predict_listing.R
+├── predicted_price_lolipop.png
 ├── project_status.md
 ├── project_status_dvf_modeling.md
 ├── project_status_region_selection.md
 ├── reports
-│   └── cyo_report.Rmd
+│   ├── cyo_report.Rmd
+│   └── sales_volume_city_vs_suburbs.png
 └── scripts
     ├── commune_adjacency.R
     ├── cyo_script.R
-    └── download_dvf.py
+    ├── download_dvf.py
+    └── viz_sales_volume.py
 
-7 directories, 121 files
+8 directories, 136 files
