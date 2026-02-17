@@ -67,8 +67,8 @@ predict_house_price <- function(listing, model = NULL, training_data = NULL,
         search_term <- tolower(listing$commune_name)
         
         name_matches <- commune_ref |>
-          filter(str_detect(tolower(nom), fixed(search_term))) |>
-          select(code_commune = code_insee, nom) |>
+          filter(str_detect(tolower(nom_commune), fixed(search_term))) |>
+          select(code_commune = code_commune_INSEE, nom_commune) |>
           distinct()
         
         if (nrow(name_matches) == 1) {
@@ -77,7 +77,7 @@ predict_house_price <- function(listing, model = NULL, training_data = NULL,
             filter(code_commune_insee == as.character(code))
           if (nrow(fi_match) == 1) {
             income_resolved <- fi_match$median_income_commune
-            income_source   <- paste0("Filosofi lookup: '", name_matches$nom,
+            income_source   <- paste0("Filosofi lookup: '", name_matches$nom_commune,
                                       "' (", code, ")")
           }
         } else if (nrow(name_matches) > 1) {
@@ -105,13 +105,13 @@ predict_house_price <- function(listing, model = NULL, training_data = NULL,
               filter(code_commune_insee == as.character(code))
             if (nrow(fi_match) == 1) {
               income_resolved <- fi_match$median_income_commune
-              income_source   <- paste0("Filosofi lookup: '", name_matches$nom,
+              income_source   <- paste0("Filosofi lookup: '", name_matches$nom_commune,
                                         "' (", code, ")")
             }
           } else if (nrow(name_matches) > 1) {
             warning(paste0(
               "Multiple communes match '", listing$commune_name, "':\n  ",
-              paste(name_matches$nom, " (", name_matches$code_commune, ")",
+              paste(name_matches$nom_commune, " (", name_matches$code_commune, ")",
                     sep = "", collapse = "\n  "),
               "\nUse commune_code for exact match. Falling back to training median."
             ))
@@ -199,7 +199,7 @@ predict_house_price <- function(listing, model = NULL, training_data = NULL,
     ~ surface + rooms + land + target_city + ring +
       year + quarter + has_land + median_income,
     data = pred_input
-  )[, -1]
+  )[, -1, drop = FALSE]
   
   pred_dmat <- xgb.DMatrix(data = pred_x)
   predicted_price <- predict(model, pred_dmat)

@@ -1340,16 +1340,20 @@ if (file.exists(checkpoint_path) && !exists("lm_fit")) {
   cat("Saving model checkpoint...\n")
   saveRDS(
     list(
-      all_results    = all_results,
-      lm_fit         = lm_fit,
-      rf_fit         = rf_fit,
-      xgb_fit        = xgb_fit,
-      test_model     = test_model,
-      xgb_pred_test  = xgb_pred_test,
-      rf_pred_test   = rf_pred_test,
-      lm_pred_test   = lm_pred_test,
-      city_colors    = city_colors,
-      dvf_houses     = dvf_houses
+      all_results      = all_results,
+      lm_fit           = lm_fit,
+      rf_fit           = rf_fit,
+      xgb_fit          = xgb_fit,
+      test_model       = test_model,
+      xgb_pred_test    = xgb_pred_test,
+      rf_pred_test     = rf_pred_test,
+      lm_pred_test     = lm_pred_test,
+      city_colors      = city_colors,
+      dvf_houses       = dvf_houses,
+      commune_summary  = commune_summary,
+      city_screening   = city_screening,
+      FINAL_K          = FINAL_K,
+      TARGET_DEPTS     = TARGET_DEPTS
     ),
     checkpoint_path
   )
@@ -1361,7 +1365,13 @@ if (file.exists(checkpoint_path) && !exists("lm_fit")) {
 #-------------------------------------------------------------------------------
 
 ## 5.1 EDA Visualizations ----
-# [TODO: Create key visualizations]
+# EDA was presented in Section 3C (price distributions, geographic patterns,
+# income correlations). No additional plots here to avoid redundancy.
+cat("\n=== EDA VISUALIZATIONS ===\n")
+cat("Exploratory data analysis was presented in Section 3C.\n")
+cat("Key visualizations: price distributions by city, price vs surface,\n")
+cat("geographic ring comparisons, and commune income correlations.\n")
+cat("Refer to Section 3C output for all EDA charts.\n\n")
 
 ## 5.2 Model Performance Comparison ----
 
@@ -1610,7 +1620,490 @@ ggplot(income_plot_data, aes(x = model, y = value, fill = stage)) +
   theme(legend.position = "bottom")
 
 ## 5.3 City Rankings ----
-# [TODO: Generate final rankings]
+
+cat("\n=== CITY RANKINGS ===\n")
+
+# --- Ensure required objects are available ---
+if (!exists("city_screening")) {
+  cat("Warning: city_screening not found.",
+      "Screening-based metrics will be NA.\n")
+}
+if (!exists("TARGET_DEPTS")) {
+  TARGET_DEPTS <- c("13", "31", "33", "34", "69", "74", "75")
+}
+if (!exists("FINAL_K")) FINAL_K <- 4
+
+### 5.3.1 City Real Estate Summary Table ----
+
+cat("\n--- 5.3.1 City real estate summary ---\n")
+
+# Aggregate DVF data by city
+city_summary <- dvf_houses |>
+  group_by(target_city) |>
+  summarise(
+    n_transactions = n(),
+    median_price   = median(`Valeur fonciere`, na.rm = TRUE),
+    median_eur_m2  = median(prix_m2, na.rm = TRUE),
+    median_surface = median(
+      `Surface reelle bati`, na.rm = TRUE
+    ),
+    median_rooms   = median(
+      `Nombre pieces principales`, na.rm = TRUE
+    ),
+    .groups = "drop"
+  )
+
+# Join XGBoost per-city metrics
+xgb_city <- all_results |>
+  filter(model == "XGBoost", scope != "Overall") |>
+  select(target_city = scope, xgb_r2 = r2, xgb_mae = mae)
+
+city_summary <- city_summary |>
+  left_join(xgb_city, by = "target_city")
+
+# Join screening data (composite score, sunshine)
+if (exists("city_screening")) {
+  screening_join <- city_screening |>
+    filter(department_code %in% TARGET_DEPTS) |>
+    select(city_name, composite_score, sunshine_hours_annual)
+  city_summary <- city_summary |>
+    left_join(
+      screening_join,
+      by = c("target_city" = "city_name")
+    )
+}
+
+# Join cluster diversity from commune_summary
+if (exists("commune_summary") &&
+    "cluster" %in% names(commune_summary)) {
+  cluster_diversity <- commune_summary |>
+    group_by(target_city) |>
+    summarise(
+      n_clusters = n_distinct(cluster),
+      dominant_cluster = names(which.max(table(cluster))),
+      .groups = "drop"
+    )
+  city_summary <- city_summary |>
+    left_join(cluster_diversity, by = "target_city")
+}
+
+# Print comprehensive 7-city comparison
+city_summary |>
+  mutate(
+    median_price  = paste0(
+      "\u20ac", scales::comma(round(median_price))
+    ),
+    median_eur_m2 = paste0(
+      "\u20ac", scales::comma(round(median_eur_m2))
+    ),
+    xgb_r2  = sprintf("%.3f", xgb_r2),
+    xgb_mae = paste0(
+      "\u20ac", scales::comma(round(xgb_mae))
+    )
+  ) |>
+  print()
+
+### 5.3.2 Standard House Price Prediction ----
+
+cat("\n--- 5.3.2 Standard house price prediction ---\n")
+cat("Standard house: 100 m\u00b2, 4 rooms, 500 m\u00b2 land,",
+    "city proper, 2024 Q2\n\n")
+
+# City-specific median incomes (from training-era data)
+city_incomes <- dvf_houses |>
+  filter(year <= 2023) |>
+  group_by(target_city) |>
+  summarise(
+    median_income = median(
+      median_income_commune, na.rm = TRUE
+    ),
+    .groups = "drop"
+  )
+
+# Get factor levels from test_model
+city_levels <- levels(test_model$target_city)
+
+# Build prediction data frame — one row per city
+std_house <- tibble(
+  target_city = factor(city_levels, levels = city_levels),
+  surface     = 100,
+  rooms       = 4L,
+  land        = 500,
+  ring        = 0L,
+  year        = 2024L,
+  quarter     = 2L,
+  has_land    = 1L
+) |>
+  left_join(city_incomes, by = "target_city")
+
+# Build model matrix (same formula as Section 4.6)
+std_x <- model.matrix(
+  ~ surface + rooms + land + target_city + ring +
+    year + quarter + has_land + median_income,
+  data = std_house
+)[, -1]
+
+# Predict with XGBoost
+std_dmat <- xgb.DMatrix(data = std_x)
+std_house$predicted_price <- predict(xgb_fit, std_dmat)
+
+# Print ranked by price (cheapest first)
+std_house |>
+  arrange(predicted_price) |>
+  mutate(
+    rank = row_number(),
+    price_fmt = paste0(
+      "\u20ac", scales::comma(round(predicted_price))
+    ),
+    income_fmt = paste0(
+      "\u20ac", scales::comma(round(median_income))
+    )
+  ) |>
+  select(rank, target_city, price_fmt, income_fmt) |>
+  print()
+
+### 5.3.3 Affordability Lollipop Chart ----
+
+cat("\n--- 5.3.3 Affordability lollipop chart ---\n")
+
+lollipop_data <- std_house |>
+  mutate(
+    city_label = fct_reorder(
+      target_city, predicted_price
+    ),
+    price_label = paste0(
+      "\u20ac",
+      scales::comma(round(predicted_price / 1000)),
+      "k"
+    )
+  )
+
+ggplot(lollipop_data,
+       aes(x = city_label, y = predicted_price)) +
+  geom_segment(
+    aes(xend = city_label, y = 0, yend = predicted_price,
+        color = target_city),
+    linewidth = 1.2
+  ) +
+  geom_point(aes(color = target_city), size = 4) +
+  geom_text(aes(label = price_label),
+            hjust = -0.3, size = 3.5) +
+  scale_y_continuous(
+    labels = scales::comma_format(prefix = "\u20ac"),
+    expand = expansion(mult = c(0, 0.15))
+  ) +
+  scale_color_manual(values = city_colors) +
+  coord_flip() +
+  labs(
+    title = "Predicted Price: Standard House by City",
+    subtitle = paste(
+      "100 m\u00b2, 4 rooms, 500 m\u00b2 land,",
+      "city proper, 2024 Q2"
+    ),
+    x = NULL, y = "Predicted Price"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+
+### 5.3.4 Multi-Criteria City Comparison ----
+
+cat("\n--- 5.3.4 Multi-criteria city comparison ---\n")
+
+# Build normalized dimensions (all 0-1, higher = better)
+criteria <- std_house |>
+  select(target_city, predicted_price) |>
+  mutate(
+    affordability = 1 - (
+      predicted_price - min(predicted_price)
+    ) / (max(predicted_price) - min(predicted_price))
+  ) |>
+  left_join(xgb_city, by = "target_city") |>
+  mutate(
+    predictability = (xgb_r2 - min(xgb_r2)) /
+      (max(xgb_r2) - min(xgb_r2))
+  )
+
+# Join screening-based norms
+if (exists("city_screening")) {
+  screening_norm <- city_screening |>
+    filter(department_code %in% TARGET_DEPTS) |>
+    select(city_name, sunshine_norm, far_right_norm)
+  criteria <- criteria |>
+    left_join(
+      screening_norm,
+      by = c("target_city" = "city_name")
+    )
+} else {
+  criteria <- criteria |>
+    mutate(sunshine_norm = NA_real_,
+           far_right_norm = NA_real_)
+}
+
+# Join cluster diversity
+if (exists("commune_summary") &&
+    "cluster" %in% names(commune_summary)) {
+  criteria <- criteria |>
+    left_join(
+      cluster_diversity |>
+        select(target_city, n_clusters),
+      by = "target_city"
+    ) |>
+    mutate(market_diversity = n_clusters / FINAL_K)
+} else {
+  criteria <- criteria |>
+    mutate(n_clusters = NA_integer_,
+           market_diversity = NA_real_)
+}
+
+# Pivot to long format for faceted Cleveland dot plot
+criteria_long <- criteria |>
+  select(
+    target_city, affordability, sunshine_norm,
+    far_right_norm, predictability, market_diversity
+  ) |>
+  pivot_longer(
+    cols = -target_city,
+    names_to = "dimension",
+    values_to = "score"
+  ) |>
+  mutate(
+    dimension = factor(
+      dimension,
+      levels = c(
+        "affordability", "sunshine_norm",
+        "far_right_norm", "predictability",
+        "market_diversity"
+      ),
+      labels = c(
+        "Affordability", "Sunshine",
+        "Political Alignment",
+        "Model Predictability", "Market Diversity"
+      )
+    )
+  )
+
+ggplot(
+  criteria_long,
+  aes(
+    x = score,
+    y = fct_reorder(target_city, score, .fun = mean),
+    color = target_city
+  )
+) +
+  geom_point(size = 3) +
+  facet_wrap(~ dimension, ncol = 1, scales = "free_x") +
+  scale_color_manual(values = city_colors) +
+  scale_x_continuous(
+    limits = c(0, 1),
+    labels = scales::percent_format()
+  ) +
+  labs(
+    title = "Multi-Criteria City Comparison",
+    subtitle = "All dimensions normalized 0\u20131 (higher = better)",
+    x = "Score", y = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "none",
+    strip.text = element_text(face = "bold"),
+    panel.spacing.y = unit(1, "lines")
+  )
+
+### 5.3.5 Final Ranking with Blended Score ----
+
+cat("\n--- 5.3.5 Final ranking ---\n")
+cat("Composite: 50% lifestyle + 30% affordability",
+    "+ 20% predictability\n\n")
+
+# Build ranking table
+final_ranking <- criteria |>
+  select(target_city, affordability, predictability)
+
+if (exists("city_screening")) {
+  screening_scores <- city_screening |>
+    filter(department_code %in% TARGET_DEPTS) |>
+    select(city_name, composite_score)
+  final_ranking <- final_ranking |>
+    left_join(
+      screening_scores,
+      by = c("target_city" = "city_name")
+    )
+} else {
+  final_ranking <- final_ranking |>
+    mutate(composite_score = NA_real_)
+}
+
+final_ranking <- final_ranking |>
+  mutate(
+    blended_score = 0.50 * composite_score +
+      0.30 * affordability +
+      0.20 * predictability
+  ) |>
+  arrange(desc(blended_score)) |>
+  mutate(rank = row_number())
+
+final_ranking |>
+  mutate(
+    across(
+      c(composite_score, affordability,
+        predictability, blended_score),
+      ~ sprintf("%.3f", .)
+    )
+  ) |>
+  select(
+    rank, target_city, blended_score,
+    composite_score, affordability, predictability
+  ) |>
+  print()
+
+# Narrative summary
+top_city   <- final_ranking$target_city[1]
+runner_up  <- final_ranking$target_city[2]
+
+cat("\nRECOMMENDATION: ", top_city,
+    " ranks #1 with a blended score of ",
+    sprintf("%.3f", final_ranking$blended_score[1]),
+    ",\ncombining lifestyle factors (screening), ",
+    "housing affordability,\n",
+    "and model predictability.\n", sep = "")
+cat("Runner-up: ", runner_up, " (blended score: ",
+    sprintf("%.3f", final_ranking$blended_score[2]),
+    ").\n\n", sep = "")
+cat("The blended score weights lifestyle screening",
+    "(50%), affordability (30%),\n")
+cat("and model predictability (20%) \u2014 reflecting",
+    "that quality of life drives\n")
+cat("the relocation decision, while housing cost",
+    "and market transparency\n")
+cat("determine feasibility.\n")
+
+### 5.3.6 City Profiles ----
+
+cat("\n--- 5.3.6 City profiles ---\n\n")
+
+for (i in seq_len(nrow(final_ranking))) {
+  city <- final_ranking$target_city[i]
+  rnk  <- final_ranking$rank[i]
+
+  # Retrieve city-specific data
+  re   <- city_summary |> filter(target_city == city)
+  pred <- std_house    |> filter(target_city == city)
+  crit <- criteria     |> filter(target_city == city)
+
+  cat(paste0("--- #", rnk, " ", city, " ---\n"))
+  cat("  Standard house prediction: \u20ac",
+      scales::comma(round(pred$predicted_price)),
+      "\n", sep = "")
+  cat("  Median price (all transactions): \u20ac",
+      scales::comma(round(re$median_price)),
+      "\n", sep = "")
+  cat("  Transactions: ",
+      scales::comma(re$n_transactions),
+      "\n", sep = "")
+
+  if (exists("city_screening")) {
+    cs <- city_screening |>
+      filter(city_name == city,
+             department_code %in% TARGET_DEPTS)
+    if (nrow(cs) > 0) {
+      cat("  Sunshine: ",
+          round(cs$sunshine_hours_annual),
+          " hours/year\n", sep = "")
+      cat("  Far-right vote: ",
+          sprintf("%.1f%%", cs$pct_far_right),
+          "\n", sep = "")
+    }
+  }
+
+  cat("  XGBoost R\u00b2: ",
+      sprintf("%.3f", crit$xgb_r2),
+      "\n", sep = "")
+
+  if ("n_clusters" %in% names(crit) &&
+      !is.na(crit$n_clusters)) {
+    cat("  Market clusters: ", crit$n_clusters,
+        " of ", FINAL_K, "\n", sep = "")
+  }
+
+  # --- Auto-generated strengths / weaknesses ---
+  strengths  <- character(0)
+  weaknesses <- character(0)
+
+  if (!is.na(crit$affordability) &&
+      crit$affordability >= 0.7) {
+    strengths <- c(strengths, "Highly affordable")
+  }
+  if (!is.na(crit$affordability) &&
+      crit$affordability <= 0.3) {
+    weaknesses <- c(weaknesses, "Expensive housing")
+  }
+
+  if (exists("city_screening")) {
+    cs <- city_screening |>
+      filter(city_name == city,
+             department_code %in% TARGET_DEPTS)
+    if (nrow(cs) > 0) {
+      if (!is.na(cs$sunshine_norm) &&
+          cs$sunshine_norm >= 0.7) {
+        strengths <- c(strengths, "Excellent sunshine")
+      }
+      if (!is.na(cs$sunshine_norm) &&
+          cs$sunshine_norm <= 0.3) {
+        weaknesses <- c(weaknesses, "Limited sunshine")
+      }
+      if (!is.na(cs$far_right_norm) &&
+          cs$far_right_norm >= 0.7) {
+        strengths <- c(strengths, "Low far-right vote")
+      }
+      if (!is.na(cs$far_right_norm) &&
+          cs$far_right_norm <= 0.3) {
+        weaknesses <- c(
+          weaknesses, "High far-right vote"
+        )
+      }
+    }
+  }
+
+  if (!is.na(crit$predictability) &&
+      crit$predictability >= 0.7) {
+    strengths <- c(strengths, "Predictable market")
+  }
+  if (!is.na(crit$predictability) &&
+      crit$predictability <= 0.3) {
+    weaknesses <- c(
+      weaknesses, "Hard-to-predict market"
+    )
+  }
+
+  if ("n_clusters" %in% names(crit) &&
+      !is.na(crit$n_clusters)) {
+    if (crit$n_clusters >= 3) {
+      strengths <- c(
+        strengths, "Diverse market segments"
+      )
+    }
+    if (crit$n_clusters <= 1) {
+      weaknesses <- c(
+        weaknesses, "Homogeneous market"
+      )
+    }
+  }
+
+  if (length(strengths) > 0) {
+    cat("  Strengths: ",
+        paste(strengths, collapse = ", "),
+        "\n", sep = "")
+  }
+  if (length(weaknesses) > 0) {
+    cat("  Weaknesses: ",
+        paste(weaknesses, collapse = ", "),
+        "\n", sep = "")
+  }
+
+  cat("\n")
+}
+
+cat("=== End of City Rankings ===\n")
 
 #-------------------------------------------------------------------------------
 # 6. UTILITY FUNCTIONS
