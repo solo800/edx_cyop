@@ -660,21 +660,7 @@ cat("Dataset:", nrow(dvf_houses), "house transactions across",
     n_distinct(dvf_houses$target_city), "cities,",
     min(dvf_houses$year), "-", max(dvf_houses$year), "\n\n")
 
-## 3C.1 Price Distribution by City ----
-# Density plot of log10(price) — log scale handles the right-skewed distribution
-ggplot(dvf_houses, aes(x = `Valeur fonciere`, fill = target_city)) +
-  geom_density(alpha = 0.5) +
-  scale_x_log10(labels = label_comma(big.mark = " ", prefix = "€")) +
-  scale_fill_manual(values = city_colors) +
-  labs(
-    title = "House Price Distribution by City",
-    subtitle = "Log-scaled density — clean dataset (2020–2024)",
-    x = "Sale Price (log scale)", y = "Density", fill = "City"
-  ) +
-  theme_minimal(base_size = 12) +
-  theme(legend.position = "bottom")
-
-## 3C.2 Price per m² by City ----
+## 3C.1 Price per m² by City ----
 # Box plot — the key metric for cross-city comparison
 ggplot(dvf_houses, aes(x = target_city, y = prix_m2, fill = target_city)) +
   geom_boxplot(outlier.alpha = 0.1, outlier.size = 0.5) +
@@ -688,7 +674,7 @@ ggplot(dvf_houses, aes(x = target_city, y = prix_m2, fill = target_city)) +
   theme_minimal(base_size = 12) +
   theme(legend.position = "none")
 
-## 3C.3 Temporal Trends — Median Price/m² by Year ----
+## 3C.2 Temporal Trends — Median Price/m² by Year ----
 yearly_city <- dvf_houses |>
   group_by(target_city, year) |>
   summarise(
@@ -719,7 +705,7 @@ yearly_city |>
   pivot_wider(names_from = year, values_from = c(n, median_prix_m2)) |>
   print()
 
-## 3C.4 Transaction Volume Over Time ----
+## 3C.3 Transaction Volume Over Time ----
 ggplot(yearly_city, aes(x = year, y = n, fill = target_city)) +
   geom_col(position = "dodge") +
   scale_fill_manual(values = city_colors) +
@@ -732,7 +718,7 @@ ggplot(yearly_city, aes(x = year, y = n, fill = target_city)) +
   theme_minimal(base_size = 12) +
   theme(legend.position = "bottom")
 
-## 3C.5 Ring Effect — City Center vs Suburbs ----
+## 3C.4 Ring Effect — City Center vs Suburbs ----
 dvf_houses <- dvf_houses |>
   mutate(ring_label = ifelse(ring == 0, "City proper", "Adjacent suburb"))
 
@@ -760,7 +746,7 @@ ggplot(dvf_houses, aes(x = ring_label, y = prix_m2, fill = ring_label)) +
   theme(legend.position = "bottom",
         axis.text.x = element_blank())
 
-## 3C.6 Price vs Surface Scatter ----
+## 3C.5 Price vs Surface Scatter ----
 # Sample for readability (full dataset makes dense scatter)
 set.seed(42)
 scatter_sample <- dvf_houses |> slice_sample(n = min(5000, nrow(dvf_houses)))
@@ -779,7 +765,7 @@ ggplot(scatter_sample, aes(x = `Surface reelle bati`, y = `Valeur fonciere`,
   theme_minimal(base_size = 12) +
   theme(legend.position = "bottom")
 
-## 3C.7 Feature Correlations ----
+## 3C.6 Feature Correlations ----
 cat("\n--- Correlation matrix (numeric features) ---\n")
 numeric_features <- dvf_houses |>
   select(`Valeur fonciere`, `Surface reelle bati`,
