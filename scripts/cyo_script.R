@@ -655,35 +655,12 @@ city_order <- dvf_houses |>
 dvf_houses <- dvf_houses |>
   mutate(target_city = factor(target_city, levels = city_order))
 
-## 3C.1 Overall Dataset Summary ----
 cat("\n=== EXPLORATORY DATA ANALYSIS ===\n")
 cat("Dataset:", nrow(dvf_houses), "house transactions across",
     n_distinct(dvf_houses$target_city), "cities,",
     min(dvf_houses$year), "-", max(dvf_houses$year), "\n\n")
 
-# Summary statistics for key numeric variables
-cat("--- Key variable summaries ---\n")
-dvf_houses |>
-  summarise(
-    across(
-      c(`Valeur fonciere`, `Surface reelle bati`,
-        `Nombre pieces principales`, prix_m2),
-      list(
-        median = ~median(., na.rm = TRUE),
-        mean   = ~mean(., na.rm = TRUE),
-        sd     = ~sd(., na.rm = TRUE),
-        min    = ~min(., na.rm = TRUE),
-        max    = ~max(., na.rm = TRUE)
-      )
-    )
-  ) |>
-  pivot_longer(everything(),
-               names_to = c("variable", "stat"),
-               names_pattern = "(.+)_(.+)") |>
-  pivot_wider(names_from = stat, values_from = value) |>
-  print(n = Inf)
-
-## 3C.2 Price Distribution by City ----
+## 3C.1 Price Distribution by City ----
 # Density plot of log10(price) — log scale handles the right-skewed distribution
 ggplot(dvf_houses, aes(x = `Valeur fonciere`, fill = target_city)) +
   geom_density(alpha = 0.5) +
@@ -697,7 +674,7 @@ ggplot(dvf_houses, aes(x = `Valeur fonciere`, fill = target_city)) +
   theme_minimal(base_size = 12) +
   theme(legend.position = "bottom")
 
-## 3C.3 Price per m² by City ----
+## 3C.2 Price per m² by City ----
 # Box plot — the key metric for cross-city comparison
 ggplot(dvf_houses, aes(x = target_city, y = prix_m2, fill = target_city)) +
   geom_boxplot(outlier.alpha = 0.1, outlier.size = 0.5) +
@@ -711,7 +688,7 @@ ggplot(dvf_houses, aes(x = target_city, y = prix_m2, fill = target_city)) +
   theme_minimal(base_size = 12) +
   theme(legend.position = "none")
 
-## 3C.4 Temporal Trends — Median Price/m² by Year ----
+## 3C.3 Temporal Trends — Median Price/m² by Year ----
 yearly_city <- dvf_houses |>
   group_by(target_city, year) |>
   summarise(
@@ -742,7 +719,7 @@ yearly_city |>
   pivot_wider(names_from = year, values_from = c(n, median_prix_m2)) |>
   print()
 
-## 3C.5 Transaction Volume Over Time ----
+## 3C.4 Transaction Volume Over Time ----
 ggplot(yearly_city, aes(x = year, y = n, fill = target_city)) +
   geom_col(position = "dodge") +
   scale_fill_manual(values = city_colors) +
@@ -755,20 +732,7 @@ ggplot(yearly_city, aes(x = year, y = n, fill = target_city)) +
   theme_minimal(base_size = 12) +
   theme(legend.position = "bottom")
 
-## 3C.6 Built Surface Distribution ----
-ggplot(dvf_houses, aes(x = `Surface reelle bati`, fill = target_city)) +
-  geom_histogram(binwidth = 10, alpha = 0.7, position = "identity") +
-  facet_wrap(~target_city, scales = "free_y", ncol = 2) +
-  scale_fill_manual(values = city_colors) +
-  scale_x_continuous(labels = label_comma(suffix = " m²")) +
-  labs(
-    title = "Distribution of Built Surface Area by City",
-    x = "Built Surface (m²)", y = "Count", fill = "City"
-  ) +
-  theme_minimal(base_size = 11) +
-  theme(legend.position = "none")
-
-## 3C.7 Ring Effect — City Center vs Suburbs ----
+## 3C.5 Ring Effect — City Center vs Suburbs ----
 dvf_houses <- dvf_houses |>
   mutate(ring_label = ifelse(ring == 0, "City proper", "Adjacent suburb"))
 
@@ -796,19 +760,7 @@ ggplot(dvf_houses, aes(x = ring_label, y = prix_m2, fill = ring_label)) +
   theme(legend.position = "bottom",
         axis.text.x = element_blank())
 
-## 3C.8 Room Count Distribution ----
-ggplot(dvf_houses, aes(x = `Nombre pieces principales`, fill = target_city)) +
-  geom_bar(position = "dodge") +
-  facet_wrap(~target_city, scales = "free_y", ncol = 2) +
-  scale_fill_manual(values = city_colors) +
-  labs(
-    title = "Number of Rooms per House by City",
-    x = "Number of Main Rooms", y = "Count", fill = "City"
-  ) +
-  theme_minimal(base_size = 11) +
-  theme(legend.position = "none")
-
-## 3C.9 Price vs Surface Scatter ----
+## 3C.6 Price vs Surface Scatter ----
 # Sample for readability (full dataset makes dense scatter)
 set.seed(42)
 scatter_sample <- dvf_houses |> slice_sample(n = min(5000, nrow(dvf_houses)))
@@ -827,7 +779,7 @@ ggplot(scatter_sample, aes(x = `Surface reelle bati`, y = `Valeur fonciere`,
   theme_minimal(base_size = 12) +
   theme(legend.position = "bottom")
 
-## 3C.10 Feature Correlations ----
+## 3C.7 Feature Correlations ----
 cat("\n--- Correlation matrix (numeric features) ---\n")
 numeric_features <- dvf_houses |>
   select(`Valeur fonciere`, `Surface reelle bati`,
@@ -842,37 +794,6 @@ numeric_features <- dvf_houses |>
 
 cor_matrix <- cor(numeric_features, use = "pairwise.complete.obs")
 round(cor_matrix, 2) |> print()
-
-## 3C.11 Quarterly Trend (Seasonality Check) ----
-quarterly <- dvf_houses |>
-  mutate(yq = paste0(year, "-Q", quarter)) |>
-  group_by(yq, year, quarter) |>
-  summarise(
-    n = n(),
-    median_prix_m2 = median(prix_m2),
-    .groups = "drop"
-  ) |>
-  arrange(year, quarter)
-
-ggplot(quarterly, aes(x = reorder(yq, year + quarter/10), y = n)) +
-  geom_col(fill = "#457B9D") +
-  geom_line(aes(y = median_prix_m2 * max(quarterly$n) / max(quarterly$median_prix_m2),
-                group = 1), color = "#E63946", linewidth = 1) +
-  scale_y_continuous(
-    labels = label_comma(),
-    sec.axis = sec_axis(
-      ~ . * max(quarterly$median_prix_m2) / max(quarterly$n),
-      labels = label_comma(suffix = " €/m²"),
-      name = "Median €/m²"
-    )
-  ) +
-  labs(
-    title = "Quarterly Transaction Volume and Median Price/m²",
-    subtitle = "Bars = transaction count, red line = median price per m²",
-    x = NULL, y = "Transactions"
-  ) +
-  theme_minimal(base_size = 11) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 cat("\nEDA complete. Proceeding to modeling.\n")
 
