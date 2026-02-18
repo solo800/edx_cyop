@@ -3,6 +3,7 @@ cyo_edx.Rproj
 .Rproj.user/
 local_data/
 *.RDS
+*.RData
 
 # Ignore raw data contents by default (large GeoPackages, GeoJSON, zips)
 # but allow the specific files required by cyo_script.R
