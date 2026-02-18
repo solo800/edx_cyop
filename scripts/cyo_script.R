@@ -144,8 +144,13 @@ election_raw <- read_excel(election_file)
 # Expected columns include: Code du département, Libellé du département,
 # and then pairs of columns for each candidate: Voix, % Voix/Exp
 
-# Process to extract Le Pen (RN) vote percentage
-# Note: Marine LE PEN is typically candidate #8 in the official ordering
+# The XLSX has repeating column groups per candidate. read_excel assigns
+# positional names (...N) to the unnamed "% Voix/Exp" columns.
+# Mapping (verified against the raw header row):
+#   ...35 = Macron     (% Voix/Exp)
+#   ...47 = Le Pen     (% Voix/Exp)
+#   ...53 = Zemmour    (% Voix/Exp)
+#   ...59 = Mélenchon  (% Voix/Exp)
 election_dept <- election_raw |>
   transmute(
     code_departement = as.character(`Code du département`),
@@ -1051,11 +1056,29 @@ importance(rf_fit) |>
 
 cat("\n=== XGBOOST ===\n")
 
+# --- Validation split for early stopping ---
+# Hold out 20% of training data so early stopping does not leak test set info.
+# Without this, the test set would influence model selection (number of rounds),
+# producing optimistically biased test metrics.
+set.seed(42)
+val_idx <- sample(nrow(train_model), size = floor(0.2 * nrow(train_model)))
+train_model_xgb <- train_model[-val_idx, ]
+val_model_xgb   <- train_model[val_idx, ]
+
+cat("XGBoost train/val split:",
+    nrow(train_model_xgb), "train /", nrow(val_model_xgb), "val\n")
+
 # Build numeric matrices (one-hot encode factors)
 train_x <- model.matrix(
   ~ surface + rooms + land + target_city + ring +
     year + quarter + has_land + median_income,
-  data = train_model
+  data = train_model_xgb
+)[, -1]
+
+val_x <- model.matrix(
+  ~ surface + rooms + land + target_city + ring +
+    year + quarter + has_land + median_income,
+  data = val_model_xgb
 )[, -1]
 
 test_x <- model.matrix(
@@ -1064,10 +1087,12 @@ test_x <- model.matrix(
   data = test_model
 )[, -1]
 
-train_y <- train_model$price
+train_y <- train_model_xgb$price
+val_y   <- val_model_xgb$price
 test_y  <- test_model$price
 
 dtrain <- xgb.DMatrix(data = train_x, label = train_y)
+dval   <- xgb.DMatrix(data = val_x, label = val_y)
 dtest  <- xgb.DMatrix(data = test_x, label = test_y)
 
 # Train with early stopping to prevent overfitting
@@ -1082,17 +1107,17 @@ xgb_fit <- xgb.train(
   ),
   data = dtrain,
   nrounds = 1000,
-  evals = list(train = dtrain, test = dtest),
+  evals = list(train = dtrain, val = dval),
   early_stopping_rounds = 50,
   verbose = 0
 )
 
 # Extract best iteration from evaluation log
 xgb_log <- attr(xgb_fit, "evaluation_log")
-xgb_best_iter <- which.min(xgb_log$test_rmse)
-xgb_best_rmse <- xgb_log$test_rmse[xgb_best_iter]
+xgb_best_iter <- which.min(xgb_log$val_rmse)
+xgb_best_rmse <- xgb_log$val_rmse[xgb_best_iter]
 cat("Stopped at:", nrow(xgb_log), "rounds (best:", xgb_best_iter, ")\n")
-cat("Best test RMSE:", round(xgb_best_rmse, 0), "\n\n")
+cat("Best val RMSE:", round(xgb_best_rmse, 0), "\n\n")
 
 # Predict on test set
 xgb_pred_test <- predict(xgb_fit, dtest)
