@@ -641,7 +641,7 @@ city_colors <- c(
   "Toulouse"    = "#E9C46A",  # gold
   "Bordeaux"    = "#2A9D8F",  # teal — Atlantic
   "Lyon"        = "#457B9D",  # steel blue
-  "Annecy"      = "#1D3557",  # navy — Alpine
+  "Annecy"      = "#7FB3D8",  # navy — Alpine
   "Paris"       = "#6C757D"   # grey — benchmark
 )
 
@@ -655,12 +655,13 @@ city_order <- dvf_houses |>
 dvf_houses <- dvf_houses |>
   mutate(target_city = factor(target_city, levels = city_order))
 
+## 3C.1 Overall Dataset Summary ----
 cat("\n=== EXPLORATORY DATA ANALYSIS ===\n")
 cat("Dataset:", nrow(dvf_houses), "house transactions across",
     n_distinct(dvf_houses$target_city), "cities,",
     min(dvf_houses$year), "-", max(dvf_houses$year), "\n\n")
 
-## 3C.1 Price per m² by City ----
+## 3C.2 Price per m² by City ----
 # Box plot — the key metric for cross-city comparison
 ggplot(dvf_houses, aes(x = target_city, y = prix_m2, fill = target_city)) +
   geom_boxplot(outlier.alpha = 0.1, outlier.size = 0.5) +
@@ -674,7 +675,7 @@ ggplot(dvf_houses, aes(x = target_city, y = prix_m2, fill = target_city)) +
   theme_minimal(base_size = 12) +
   theme(legend.position = "none")
 
-## 3C.2 Temporal Trends — Median Price/m² by Year ----
+## 3C.3 Temporal Trends — Median Price/m² by Year ----
 yearly_city <- dvf_houses |>
   group_by(target_city, year) |>
   summarise(
@@ -705,7 +706,7 @@ yearly_city |>
   pivot_wider(names_from = year, values_from = c(n, median_prix_m2)) |>
   print()
 
-## 3C.3 Transaction Volume Over Time ----
+## 3C.4 Transaction Volume Over Time ----
 ggplot(yearly_city, aes(x = year, y = n, fill = target_city)) +
   geom_col(position = "dodge") +
   scale_fill_manual(values = city_colors) +
@@ -718,7 +719,7 @@ ggplot(yearly_city, aes(x = year, y = n, fill = target_city)) +
   theme_minimal(base_size = 12) +
   theme(legend.position = "bottom")
 
-## 3C.4 Ring Effect — City Center vs Suburbs ----
+## 3C.5 Ring Effect — City Center vs Suburbs ----
 dvf_houses <- dvf_houses |>
   mutate(ring_label = ifelse(ring == 0, "City proper", "Adjacent suburb"))
 
@@ -746,26 +747,56 @@ ggplot(dvf_houses, aes(x = ring_label, y = prix_m2, fill = ring_label)) +
   theme(legend.position = "bottom",
         axis.text.x = element_blank())
 
-## 3C.5 Price vs Surface Scatter ----
-# Sample for readability (full dataset makes dense scatter)
-set.seed(42)
-scatter_sample <- dvf_houses |> slice_sample(n = min(5000, nrow(dvf_houses)))
+## 3C.6 Income Effect — Same House, Different Neighborhood ----
+# A ~100 m² house costs very different amounts depending on commune wealth.
+# This slope chart splits each city's communes into low vs high income
+# (median split) and shows the price gap for similarly-sized houses.
+# Steep slopes = income explains price variance; flat = it doesn't.
 
-ggplot(scatter_sample, aes(x = `Surface reelle bati`, y = `Valeur fonciere`,
-                           color = target_city)) +
-  geom_point(alpha = 0.3, size = 1) +
-  scale_y_continuous(labels = label_comma(big.mark = " ", prefix = "€")) +
-  scale_x_continuous(labels = label_comma(suffix = " m²")) +
+slope_data <- dvf_houses |>
+  filter(`Surface reelle bati` >= 85, `Surface reelle bati` <= 115) |>
+  group_by(target_city) |>
+  mutate(
+    income_tier = ifelse(
+      median_income_commune <= median(median_income_commune, na.rm = TRUE),
+      "Low Income\nCommunes",
+      "High Income\nCommunes"
+    )
+  ) |>
+  ungroup() |>
+  group_by(target_city, income_tier) |>
+  summarise(
+    median_price = median(`Valeur fonciere`, na.rm = TRUE),
+    n = n(),
+    .groups = "drop"
+  )
+
+# Order x-axis: low income on left, high income on right
+slope_data <- slope_data |>
+  mutate(income_tier = factor(income_tier,
+                              levels = c("Low Income\nCommunes",
+                                         "High Income\nCommunes")))
+
+ggplot(slope_data, aes(x = income_tier, y = median_price,
+                       group = target_city, color = target_city)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 3.5) +
+  geom_text(
+    data = slope_data |> filter(income_tier == "High Income\nCommunes"),
+    aes(label = target_city),
+    hjust = -0.15, size = 3.5
+  ) +
+  scale_y_continuous(labels = label_comma(prefix = "\u20ac")) +
   scale_color_manual(values = city_colors) +
   labs(
-    title = "Sale Price vs Built Surface Area",
-    subtitle = paste0("Random sample of ", nrow(scatter_sample), " transactions"),
-    x = "Built Surface (m²)", y = "Sale Price", color = "City"
+    title = "Same-Sized House, Different Price: The Income Effect",
+    subtitle = "Median price of ~100 m\u00b2 houses in low vs high income communes",
+    x = NULL, y = "Median House Price"
   ) +
   theme_minimal(base_size = 12) +
-  theme(legend.position = "bottom")
+  theme(legend.position = "none")
 
-## 3C.6 Feature Correlations ----
+## 3C.7 Feature Correlations ----
 cat("\n--- Correlation matrix (numeric features) ---\n")
 numeric_features <- dvf_houses |>
   select(`Valeur fonciere`, `Surface reelle bati`,
