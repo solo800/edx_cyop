@@ -383,7 +383,7 @@ all_results <- bind_rows(all_results, lm_results)
 
 ### Model 2: Random Forest
 
-Random Forest handles non-linear relationships and feature interactions naturally — no need to specify them manually. The 500-tree ensemble learns city-specific patterns through recursive splits. This is the key advantage over linear regression: the model can discover that, say, land area matters more in Toulouse than in Paris without being told.
+Random Forest handles non-linear relationships and feature interactions without requiring manual specification. Where linear regression needed explicit interaction terms (city × surface, city × ring), the 500-tree ensemble discovers these patterns on its own through recursive partitioning. If land area matters more in Toulouse than in Paris, the model learns that from the data. I don't have to tell it.
 
 ```{r rf-model, eval=FALSE}
 set.seed(42)
@@ -398,52 +398,28 @@ all_results <- bind_rows(all_results, rf_results)
 
 ### Model 3: XGBoost
 
-XGBoost (extreme gradient boosting) builds an ensemble of shallow decision trees sequentially, with each tree correcting the errors of the previous ones. It requires numeric input, so I one-hot encoded the `target_city` factor. I used a 20% validation holdout from the training data for early stopping — this prevents the test set from influencing model selection (number of boosting rounds), which would bias the test metrics upward.
+XGBoost builds an ensemble of shallow decision trees sequentially, where each new tree corrects the errors of the ones before it. Unlike Random Forest, XGBoost requires numeric input. I converted all factor variables to one-hot encoded columns using model.matrix.
 
-```{r xgb-model, eval=FALSE}
-set.seed(42)
-val_idx <- sample(nrow(train_model), size = floor(0.2 * nrow(train_model)))
-train_model_xgb <- train_model[-val_idx, ]
-val_model_xgb <- train_model[val_idx, ]
+One important methodological detail: XGBoost uses early stopping to determine how many boosting rounds to run. If I had used the test set for this, the test set would have influenced model selection, biasing the final evaluation metrics upward. To avoid this data leakage, I held out 20% of the training data as a separate validation set for early stopping, keeping the test set completely untouched until final evaluation.
 
-make_matrix <- function(df) {
-    model.matrix(
-        ~ surface + rooms + land + target_city + ring +
-            year + quarter + has_land + median_income,
-        data = df
-    )[, -1]
-}
-
-train_x <- make_matrix(train_model_xgb)
-val_x <- make_matrix(val_model_xgb)
-test_x <- make_matrix(test_model)
-
-dtrain <- xgb.DMatrix(data = train_x, label = train_model_xgb$price)
-dval <- xgb.DMatrix(data = val_x, label = val_model_xgb$price)
-dtest <- xgb.DMatrix(data = test_x, label = test_model$price)
-
-set.seed(42)
+```{r xgboost-model, eval=FALSE}
+# Illustrative — see cyo_script.R Section 4.6 for full implementation
 xgb_fit <- xgb.train(
     params = list(
-        objective = "reg:squarederror", max_depth = 6,
-        eta = 0.1, subsample = 0.8, colsample_bytree = 0.8
+        objective = "reg:squarederror",
+        max_depth = 6, eta = 0.1,
+        subsample = 0.8, colsample_bytree = 0.8
     ),
-    data = dtrain, nrounds = 1000,
+    data = dtrain,
+    nrounds = 1000,
     evals = list(train = dtrain, val = dval),
-    early_stopping_rounds = 50, verbose = 0
+    early_stopping_rounds = 50
 )
-
-xgb_pred_test <- predict(xgb_fit, dtest)
-xgb_results <- evaluate_model(
-    test_model$price, xgb_pred_test,
-    as.character(test_model$target_city), "XGBoost"
-)
-all_results <- bind_rows(all_results, xgb_results)
 ```
 
 ### Model 4: K-Means Clustering (Unsupervised)
 
-As a complement to the supervised models, I used K-means clustering to segment communes by their real estate market characteristics. I aggregated transactions to the commune level (median price/m², surface, rooms, land area, transaction volume, and median income), scaled the six features, and tested k = 2 through 8 using both the elbow method (within-cluster sum of squares) and silhouette analysis. The silhouette-optimal k was 6, but this produced singleton clusters, so I chose k = 4 for interpretability.
+As a complement to the supervised models, I used K-means clustering to segment communes by their real estate market characteristics. I aggregated transactions to the commune level (median price/m², surface, rooms, land area, transaction volume, and median income), scaled the six features, and tested k = 2 through 8 using both the elbow method (within-cluster sum of squares) and silhouette analysis. The silhouette-optimal k was 6, but this produced singleton and near-singleton clusters (one or two communes each), making them uninterpretable. I chose k = 4 instead: its silhouette score (0.404) is nearly identical to k = 6 (0.414), but the resulting clusters are large enough to represent meaningful market tiers.
 
 ```{r kmeans-model, eval=FALSE}
 commune_summary <- dvf_houses |>
