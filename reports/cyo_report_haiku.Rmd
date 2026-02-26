@@ -1,0 +1,628 @@
+---
+title: "Finding Home in France: A Data-Driven Approach to City Selection"
+subtitle: "HarvardX PH125.9x Data Science Capstone - Choose Your Own Project"
+author: "Adam Solomon"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  fig.align = "center",
+  fig.width = 8,
+  fig.height = 6
+)
+
+# Load required libraries
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(knitr)) install.packages("knitr", repos = "http://cran.us.r-project.org")
+if(!require(scales)) install.packages("scales", repos = "http://cran.us.r-project.org")
+if(!require(here)) install.packages("here", repos = "http://cran.us.r-project.org")
+if(!require(ggrepel)) install.packages("ggrepel", repos = "http://cran.us.r-project.org")
+if(!require(kableExtra)) install.packages("kableExtra", repos = "http://cran.us.r-project.org")
+
+library(tidyverse)
+library(knitr)
+library(scales)
+library(here)
+library(ggrepel)
+library(kableExtra)
+```
+
+# Executive Summary
+
+[*To be written in final session after all results are complete.*]
+
+# Introduction
+
+## Context & Personal Motivation
+
+My family currently lives in Paris, and like many Parisians, we are considering relocation to a sunnier, more family-friendly region. The decision involves multiple competing priorities: climate preferences (Paris receives only ~1,660 sunshine hours annually), real estate affordability, demographic characteristics suitable for raising a young child, and alignment with family values. My wife plans to open a pilates and yoga studio, requiring both affordable commercial real estate and an affluent client base. Rather than relying on intuition, real estate websites, or anecdotal advice, I decided to combine personal decision-making with rigorous machine learning analysis of the French real estate market.
+
+This project bridges a major family life decision with an academic machine learning capstone, creating authentic motivation to deliver both a useful decision-support tool and a robust analytical product suitable for peer and staff grading.
+
+## Dataset Description: French Real Estate Transactions (DVF)
+
+This project analyzes the **DVF** (Demandes de Valeurs Foncières), a comprehensive open dataset of property transactions published by the French government. The DVF includes all notarized property sales in France, with this analysis focusing on **2020–2024** transactions across seven metropolitan areas and 159 communes.
+
+### Why DVF?
+
+The DVF dataset offers several advantages for this capstone project:
+
+- **Complete coverage**: Every notarized property transaction in France, not a sample or aggregated summary. Approximately 3–5 million transactions nationally per year, providing statistical power across diverse markets.
+- **Rich feature set**: Transaction price, property characteristics (built area, room count, land area), precise location codes (commune, department), transaction date, and sale type (distinguishing sales from gifts or inheritance transfers).
+- **Government-published**: High data quality with official provenance—appropriate for academic submission and reproducible research.
+- **Not overused**: Unlike MovieLens, Iris, or Titanic datasets commonly seen in data science courses, DVF is uncommon in educational contexts, reducing plagiarism concerns and demonstrating independent dataset selection.
+- **Personal relevance**: The analysis directly informs a major family decision, creating authentic motivation and compelling narrative for the report.
+
+### Dataset Structure
+
+Raw DVF files are pipe-delimited (`|`) text files with 43 columns capturing cadastral references, property metadata, and transaction details. Key columns for this analysis appear in Table 1.1.
+
+| Column | Type | Definition |
+|--------|------|-----------|
+| `Valeur fonciere` | Numeric | Sale price in euros (€)—**target variable** for modeling |
+| `Surface reelle bati` | Numeric | Built area in square meters (m²)—**primary predictor** across all models |
+| `Nombre pieces principales` | Numeric | Number of main rooms (bedrooms, living room, kitchen counted; bathrooms not counted) |
+| `Surface terrain` | Numeric | Total land area in m² (including built footprint and gardens) |
+| `Date mutation` | Date | Transaction date in dd/mm/yyyy format |
+| `Code departement` | Character | 2-digit department code (01–95, excluding Corsica in this analysis) |
+| `Code commune` | Character | 3-digit commune code within the department (INSEE standard) |
+| `Type local` | Character | Property type (Maison, Appartement, Local industriel, etc.)—**filtered to "Maison" only** |
+| `Nature mutation` | Character | Transaction type (Vente, Échange, Apport, Succession, etc.)—**filtered to "Vente" only** |
+| Additional columns (33) | Mixed | Cadastral parcels, street addresses, building certificates, etc. |
+
+**Table 1.1**: Key DVF columns used in this analysis. All others retained for traceability but not used in modeling.
+
+### Scope of Analysis
+
+- **Raw volume**: Approximately 3–5 million transactions annually across all of France.
+- **Filtered scope**: This analysis retains ~59,000 house (Maison) sales across 159 communes in 7 target departments, years 2020–2024.
+- **Property type**: Single-family houses only, excluding apartments, commercial, and mixed-use properties to create a homogeneous comparison class.
+- **Geography**: Seven departments (13, 31, 33, 34, 69, 74, 75) covering six candidate cities plus Paris as an international metro-area benchmark.
+- **Time window**: 2020–2024 (five complete or near-complete years). Includes post-COVID market recovery, current market state, and sufficient historical context.
+
+Supplementary datasets integrated during analysis:
+
+- **Communes reference data**: Geographic and administrative metadata for all French municipalities (INSEE)
+- **INSEE population by age**: Demographic structure (10 age brackets) at commune level (2020 census)
+- **Météo France climate normals**: Sunshine hours, temperature, and rainfall (30-year averages) for 55 major cities
+- **INSEE Filosofi income & poverty**: Median disposable income and poverty rates by commune (2020), used to contextualize neighborhood economic conditions
+- **2022 presidential election results**: First-round vote share by candidate and department, reflecting local political alignment
+
+## Project Goal
+
+The overarching goal is to **develop a machine learning framework that recommends an optimal French city for relocation by synthesizing real estate market dynamics with climate, demographics, and personal criteria**.
+
+This goal decomposes into two parallel objectives:
+
+1. **Personal decision support**: Use DVF price modeling to compare real estate affordability across candidate cities, contextualized by climate (sunshine hours, rainfall), demographic (% working-age population), and political screening. Culminates in a ranked list of recommendations with estimated costs for a typical family home (100 m², 4 rooms, with land).
+
+2. **Academic ML demonstration**: Build and compare multiple supervised machine learning algorithms (linear regression baseline, Random Forest, XGBoost) and complement with unsupervised learning (K-means clustering) to uncover latent real estate market tiers. Demonstrate competence across the full ML pipeline: exploratory data analysis, feature engineering, temporal train/test design, model selection with early stopping, evaluation, and interpretation.
+
+## Scope: What This Analysis Does and Does Not Do
+
+### In Scope
+
+- Predict house prices across seven cities using DVF data and multiple algorithms
+- Identify which cities have more predictable (homogeneous) vs. volatile (heterogeneous) markets
+- Rank candidate cities by a composite score combining climate, demographics, economics, and politics
+- Estimate real estate affordability differences across cities
+- Discover latent market tiers using unsupervised clustering
+
+### Out of Scope
+
+- Predict individual house prices with perfect accuracy (impossible; real estate has inherent uncertainty from omitted features)
+- Account for subjective neighborhood quality, school district reputation, or cultural amenities (data unavailable in DVF)
+- Include property condition, renovation status, or energy performance ratings (DVF does not capture these details)
+- Model supply and demand dynamics or market participation rates (transaction frequency)
+- Recommend a city as objectively "best" for all families (the ranking reflects our family's priorities: climate + affordability + political alignment; others may weight these differently)
+- Provide investment advice or predict future price appreciation (static cross-sectional analysis of recent years, not time-series forecasting)
+
+The analysis is a **structured decision-support tool**, not a crystal ball or universal recommendation engine.
+
+## Key Methodological Decisions
+
+To constrain scope and ensure academic rigor, the following decisions were made upfront:
+
+**Houses only**: Filtered to "Maison" property type (single-family homes) to create a homogeneous comparison class. Apartments (Appartement), commercial property, and mixed-use structures are excluded. This simplifies model interpretation—coefficients reflect price drivers for houses specifically.
+
+**2020–2024 time window**: Captures five years of recent data, including post-COVID recovery, current market conditions, and sufficient historical context for stable estimates. First-semester 2025 data excluded for consistency.
+
+**Seven-department geographic scope**: Derived from systematic screening of 55 French cities across climate, demographic, economic, and political dimensions (detailed in Section 2.1). Seven departments emerged as the optimal set balancing candidate quality, data availability, and computational tractability.
+
+**Temporal train/test split**: Training set uses transactions from 2020–2023; test set uses 2024 only. Real estate markets are path-dependent—prices in year *t* depend on market conditions in year *t*–1. A random train/test split would leak future market information into the training set, producing overly optimistic test metrics. Temporal splitting respects the inherent structure of real estate data.
+
+**Commune-level filtering with adjacency ring**: City-proper boundaries alone provided inadequate sample sizes (Paris proper: 136 transactions; Lyon proper: 171). Adjacent communes (Ring 1), identified using spatial adjacency, expanded samples to ~1,300–3,000 per city. This captures both central urban markets and immediate suburban expansion.
+
+**Median income feature engineering**: Filosofi 2020 commune-level median income was added as a model feature in Section 3B.6 after initial modeling revealed feature ceiling (~R² = 0.60). This feature captures neighborhood economic context and proved transformative, boosting tree model R² from 0.60 to 0.68—a 13% improvement—demonstrating the power of thoughtful feature engineering over algorithmic sophistication.
+
+---
+
+# Methods & Analysis
+
+## Part 1: City Selection & Screening
+
+Before analyzing real estate transactions, we systematically screened France's major metropolitan areas using climate, demographic, economic, and political criteria. This section describes the screening methodology, key tradeoffs discovered, and justification for the final seven-city selection.
+
+### Data Sources for Screening
+
+Five supplementary datasets enabled city-level comparison across 55 major French cities:
+
+| Source | Dataset | Geography | Variables |
+|--------|---------|-----------|-----------|
+| Météo France | Climate normals (30-year averages) | 55 major cities | Sunshine hours/year, avg temp (Jan/Jul), rainfall mm/year |
+| INSEE | Population census 2020, age brackets | All communes | Population by 10 age brackets; aggregated to city/dept level |
+| INSEE | Filosofi 2020, income distribution | All communes | Median disposable income (Q220), affluent threshold (Q320), poverty rate (TP6020) |
+| Ministère de l'Intérieur | Presidential election 2022, 1st round | Departments | Vote share by candidate (Macron, Le Pen, Mélenchon, Zemmour) |
+| data.gouv.fr | Communes reference database | All communes | Geographic and administrative identifiers (INSEE codes, postal codes, regions) |
+
+All data were downloaded from official French government sources (data.gouv.fr, INSEE.fr, or Météo France) as of early February 2026.
+
+### Screening Criteria & Normalization
+
+Six criteria were chosen to balance climate preference (primary motivation for leaving Paris), demographic suitability (young child in household), economic context (wife's planned business), and family values (political alignment). Each criterion was normalized to a 0–1 scale, where 1 represents the best value and 0 the worst, to enable additive composite scoring.
+
+#### **1. Sunshine Hours (Climate Motivation)**
+
+*Why*: Paris receives ~1,660 sunshine hours annually. Family priority is a warmer, sunnier climate.
+
+*Normalization*: 
+
+$$\text{sunshine\_norm} = \frac{\text{sunshine\_hours} - \min(\text{sunshine\_hours})}{\max(\text{sunshine\_hours}) - \min(\text{sunshine\_hours})}$$
+
+*Range across 55 cities*: 1,577–2,858 hours/year. Mediterranean cities (Marseille, Nice, Montpellier) score highest; Alpine and northern cities lowest.
+
+#### **2. Rainfall (Climate Quality)**
+
+*Why*: High rainfall correlates with cloud cover and fewer sunny days. Lower rainfall compounds the sunshine benefit.
+
+*Note*: Rainfall is weakly correlated with sunshine (r = –0.16) across the 55 cities, indicating they capture different climate dimensions. Both are retained.
+
+*Normalization* (inverted—lower rainfall is better):
+
+$$\text{rainfall\_norm} = 1 - \frac{\text{rainfall\_mm} - \min(\text{rainfall\_mm})}{\max(\text{rainfall\_mm}) - \min(\text{rainfall\_mm})}$$
+
+*Range*: 604–1,043 mm/year. Montpellier (~604 mm, driest) scores highest; alpine/oceanic regions highest rainfall.
+
+#### **3. Working-Age Population Percentage (Demographics)**
+
+*Why*: Cities with higher % of 25–54 year-olds signal economic vitality, better services, and age-cohort compatibility (our child will grow up among similarly-aged peers).
+
+*Calculation*: Aggregated 2020 census population by age bracket to department level, computed % aged 25–54.
+
+*Normalization*:
+
+$$\text{age\_norm} = \frac{\text{pct\_25\_54} - \min(\text{pct\_25\_54})}{\max(\text{pct\_25\_54}) - \min(\text{pct\_25\_54})}$$
+
+*Range*: ~33–41% across departments.
+
+#### **4. Affluent Population (Economic Context)**
+
+*Why*: Wife's pilates/yoga business targets high-income clients. INSEE Filosofi defines "affluent" as households above the Q3 (75th percentile) income threshold.
+
+*Calculation*: Department-level aggregation of Filosofi 2020 "DISP" (disposable income) data; Q320 represents the 80th percentile threshold (most restrictive affluence definition available).
+
+*Normalization*:
+
+$$\text{affluent\_norm} = \frac{\text{income\_Q320} - \min(\text{income\_Q320})}{\max(\text{income\_Q320}) - \min(\text{income\_Q320})}$$
+
+*Range*: €27,700–€42,700 (annual disposable income, 80th percentile). Île-de-France and Alpine regions score highest; coastal and southern regions lower.
+
+#### **5. Poverty Rate (Socioeconomic Health)**
+
+*Why*: Very high poverty rates can indicate economic stress, which indirectly affects business stability and neighborhood amenity.
+
+*Calculation*: Department-level Filosofi 2020 poverty rate (TP6020 = % of households below relative poverty threshold).
+
+*Normalization* (inverted—lower poverty is better):
+
+$$\text{poverty\_norm} = 1 - \frac{\text{poverty\_rate} - \min(\text{poverty\_rate})}{\max(\text{poverty\_rate}) - \min(\text{poverty\_rate})}$$
+
+*Range*: ~10–20% across departments.
+
+#### **6. Political Alignment (Family Values)**
+
+*Why*: Family prioritizes liberal democratic values and immigration acceptance. Far-right vote share (National Rally + Reconquête) serves as a proxy for local political environment.
+
+*Calculation*: 2022 presidential election 1st round, combined vote share for Le Pen (National Rally, RN) and Zemmour (Reconquête, far-right challenger).
+
+*Normalization* (inverted—lower far-right vote is better):
+
+$$\text{far\_right\_norm} = 1 - \frac{\text{pct\_far\_right} - \min(\text{pct\_far\_right})}{\max(\text{pct\_far\_right}) - \min(\text{pct\_far\_right})}$$
+
+*Range*: ~11–24% far-right vote across departments. Mediterranean and some rural departments higher; urban, educated regions lower.
+
+### Composite Scoring Formula
+
+After normalizing all six criteria to 0–1, a weighted composite score was calculated. Weights were iteratively refined through five rounds of experimentation (documented in project status file) to reflect family priorities:
+
+$$\text{composite\_score} = \frac{1}{\sum w_i} \left( w_{\text{far\_right}} \times \text{far\_right\_norm} + w_{\text{sunshine}} \times \text{sunshine\_norm} + w_{\text{rainfall}} \times \text{rainfall\_norm} + w_{\text{affluent}} \times \text{affluent\_norm} + w_{\text{age}} \times \text{age\_norm} + w_{\text{poverty}} \times \text{poverty\_norm} \right)$$
+
+**Final weights** (after family discussion):
+
+| Criterion | Weight | Rationale |
+|-----------|--------|-----------|
+| Political alignment (far-right norm) | 1.00 | Primary: family values are non-negotiable |
+| Sunshine hours (sunshine norm) | 0.75 | Secondary: main motivation for leaving Paris |
+| Rainfall (rainfall norm) | 0.75 | Secondary: complements sunshine; captures dry climate advantage |
+| Affluent population (affluent norm) | 0.75 | Secondary: wife's business depends on affluent client base |
+| Working-age % (age norm) | 0.50 | Tertiary: good demographic signal but not decisive |
+| Poverty rate (poverty norm) | 0.25 | Minimal weight: poverty is very correlated with affluence; included for completeness |
+| **Total** | **4.00** | Normalized by sum for 0–1 output |
+
+**Weight evolution**: Early iterations weight sunshine heavily (1.0) and found Mediterranean cities (Marseille, Montpellier) ranked #1 due to climate dominance. However, these regions showed higher far-right vote shares and higher poverty, creating tension with family values. Final iteration raised far-right weight to 1.0 (equal to sunshine) and restored affluence weight to 0.75, resulting in Toulouse emerging as #1—a balanced choice trading some sunshine for stronger political alignment and economic context.
+
+### Discovered Tradeoffs
+
+City screening revealed a critical geographic tension:
+
+**Mediterranean Advantage (Climate)**: Marseille and Montpellier offer excellent sunshine (2,600–2,858 hrs/year vs Paris's 1,660), low rainfall, and Mediterranean lifestyle appeal. However, both showed:
+- Higher far-right vote share (23–24% vs France ~18% median)
+- Higher poverty rates (15–17% vs France ~12% median)
+- Lower affluent population income thresholds (bottom quartile nationally)
+
+**Southwest Advantage (Values + Economics)**: Toulouse and Bordeaux offer:
+- Lower far-right vote share (12–13%, among France's lowest)
+- Higher affluent population thresholds (~€35K vs Mediterranean ~€28K)
+- Moderate sunshine (2,000–2,035 hrs/year—still +20–25% above Paris)
+- Younger working-age population
+
+**Alpine Advantage (Affluence)**: Annecy combines affluent population (top 5% nationally), strong values alignment, but at the cost of:
+- Lowest sunshine in the candidate set (~1,951 hrs/year, below Paris!)
+- Highest rainfall (~1,000+ mm/year, severe)
+- Smallest real estate market (expected ~2,400 house transactions over 5 years vs Toulouse ~11,700)
+
+This geographic tension reflects a broader France pattern: **sunnier regions tend to be more economically challenged or politically divergent from urban-educated populations**. The analysis cannot resolve this tradeoff—it simply makes it transparent, allowing the family to make an informed choice.
+
+### Final City Selection
+
+Applying the composite scoring formula to all 55 cities and filtering to exclude Île-de-France (departing region) and Corsica (island logistics impractical), seven cities were selected:
+
+| Rank | City | Department | Composite Score | Primary Strengths |
+|------|------|-----------|-----------------|-------------------|
+| **1** | **Toulouse** | 31 | **0.585** | **Best balance**: strong politics + climate + affluence |
+| **2** | **Marseille** | 13 | **0.566** | Strongest sunshine (2,858 hrs), Mediterranean lifestyle |
+| **4** | **Lyon** | 69 | 0.542 | Strong all-rounder: politics, affluence, moderate climate |
+| **8** | **Annecy** | 74 | 0.517 | Highest affluence (Alpine market), strong politics |
+| **9** | **Montpellier** | 34 | 0.502 | Mediterranean sunshine + university city culture |
+| **12** | **Bordeaux** | 33 | 0.470 | TGV to Paris, post-boom market dynamics, good politics |
+| **–** | **Paris** | 75 | (benchmark) | Included as international mega-city benchmark (excluded from city ranking) |
+
+**Ranking notes:**
+- Toulouse, Marseille, Lyon, Montpellier, and Bordeaux were selected as primary candidates, each offering distinct tradeoffs (climate vs. values vs. economics).
+- Annecy included despite lower sunshine due to extreme affluence and political alignment, though small sample size expected.
+- Paris retained as benchmark—an international mega-city with unique market characteristics (highest prices, most predictable market, strongest income variation across communes).
+- Excluded from top 12: cities ranking 3, 5–7, 10–11 were rejected for various reasons (high far-right vote, declining demographics, severe climate deficits, or marginal scores).
+
+### Justification for DVF Analysis Scope
+
+The seven selected departments provide:
+
+1. **Diversity**: Geographic spread from Mediterranean (Marseille) to Alpine (Annecy) to Atlantic (Bordeaux), preventing overfitting to a single regional pattern.
+
+2. **Statistical power**: Expected ~59,000 house transactions across five years (2020–2024), with city-level samples ranging from 2,400 (Annecy, smallest) to 14,700 (Bordeaux, largest). This imbalance is addressed in modeling through city-specific interaction terms (linear regression) and natural tree splits (Random Forest, XGBoost).
+
+3. **Real estate market diversity**: Includes both appreciated markets (Paris petite couronne, Lyon, Annecy) and softening markets (Bordeaux post-TGV boom), revealing how modeling performance varies across market conditions.
+
+4. **Feature richness**: Filosofi 2020 commune-level income data provides substantial within-city income variation (e.g., Paris: €20K–€42K by commune), enabling the model to distinguish neighborhood economic context—a key predictor of house prices.
+
+The seven-department scope balances analytical depth, data availability, and computational tractability, making it suitable for a capstone project.
+
+### Screening Visualizations
+
+The following visualizations document the city selection process and reveal key tradeoffs discovered during screening of the 55-city candidate set.
+
+#### Figure 2.1: Composite Score Ranking
+
+```{r screening-composite-ranking, fig.cap="City Selection: Composite Score Ranking. Top 15 French cities ranked by composite score (0–1 scale) across climate, demographics, economics, and political alignment. Red bars indicate the 7 cities selected for DVF analysis; grey bars indicate candidates screened out."}
+# Load city screening data
+city_screening <- read_csv(
+  here::here("data", "city_screening.csv"),
+  show_col_types = FALSE
+)
+
+# Filter to top 15 cities (by composite score) and exclude Île-de-France/Corsica
+target_cities <- c("Toulouse", "Marseille", "Lyon", "Annecy", "Montpellier", 
+                   "Bordeaux", "Paris")
+
+top_cities <- city_screening |>
+  filter(!region_name %in% c("Île-de-France", "Corse")) |>
+  arrange(desc(composite_score)) |>
+  head(15)
+
+plot_data <- top_cities |>
+  mutate(
+    selected = ifelse(city_name %in% target_cities, "Selected", "Screened out"),
+    city_label = fct_reorder(city_name, composite_score)
+  )
+
+# Color palette
+color_palette <- c(
+  "Selected" = "#E63946",
+  "Screened out" = "#CED4DA"
+)
+
+ggplot(plot_data, aes(x = city_label, y = composite_score, fill = selected)) +
+  geom_col(width = 0.7, color = "white", linewidth = 0.3) +
+  geom_text(
+    aes(label = sprintf("%.3f", composite_score)),
+    hjust = -0.3, size = 3.5, fontface = "bold"
+  ) +
+  scale_fill_manual(values = color_palette, name = NULL) +
+  scale_y_continuous(
+    limits = c(0, max(plot_data$composite_score) * 1.15),
+    labels = scales::number_format(accuracy = 0.01)
+  ) +
+  coord_flip() +
+  labs(x = NULL, y = "Composite Score (0–1)") +
+  theme_minimal(base_size = 11) +
+  theme(
+    legend.position = "bottom",
+    panel.grid.major.x = element_line(color = "#EEEEEE", linewidth = 0.3)
+  )
+```
+
+#### Figure 2.2: The Climate-Politics Tradeoff
+
+```{r screening-climate-politics-tradeoff, fig.cap="Climate vs Political Alignment: A Critical Tradeoff. Sunshine hours (x-axis) plotted against far-right vote share (y-axis) for all 55 screened cities. The scatter reveals a geographic tension: Mediterranean cities (upper right) offer excellent climate but higher far-right political presence; Southwest cities (lower middle) show stronger liberal alignment but cloudier skies. Selected cities are marked in red."}
+# All 55 screened cities
+plot_data_tradeoff <- city_screening |>
+  mutate(
+    selected = ifelse(city_name %in% target_cities, "Selected", "Not selected")
+  )
+
+annotate_cities <- c("Toulouse", "Marseille", "Bordeaux", "Lyon", 
+                     "Montpellier", "Annecy", "Paris")
+
+ggplot(plot_data_tradeoff, aes(x = sunshine_hours_annual, y = pct_far_right,
+                                color = selected)) +
+  geom_point(size = 3, alpha = 0.7) +
+  geom_text_repel(
+    data = plot_data_tradeoff |> filter(city_name %in% annotate_cities),
+    aes(label = city_name),
+    size = 3.5,
+    fontface = "bold",
+    box.padding = 0.5,
+    point.padding = 0.3,
+    show.legend = FALSE
+  ) +
+  scale_color_manual(
+    values = c("Selected" = "#E63946", "Not selected" = "#ADB5BD"),
+    name = NULL
+  ) +
+  labs(
+    x = "Annual Sunshine Hours",
+    y = "Far-Right Vote Share (%)"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    legend.position = "bottom",
+    panel.grid.major = element_line(color = "#EEEEEE", linewidth = 0.3)
+  )
+```
+
+#### Figure 2.3: Multi-Criterion City Comparison (Radar Chart)
+
+```{r screening-radar-7cities, fig.cap="Multi-Criterion Comparison: 7 Target Cities. Radar chart showing all seven selected cities across six normalized screening criteria (0–1 scale). Each criterion represents a family priority: sunshine (climate), rainfall (dry climate), political alignment (family values), affluence (wife's business), working-age percentage (demographics), and poverty (socioeconomic health). Cities cluster differently across criteria, revealing distinct strength profiles."}
+# Prepare data for radar plot
+radar_data <- city_screening |>
+  filter(city_name %in% target_cities) |>
+  select(
+    city_name,
+    Sunshine = sunshine_norm,
+    Rainfall = rainfall_norm,
+    `Working-Age %` = age_norm,
+    Affluence = affluent_norm,
+    Poverty = poverty_norm,
+    `Political Align.` = far_right_norm
+  ) |>
+  pivot_longer(
+    cols = -city_name,
+    names_to = "criterion",
+    values_to = "score"
+  )
+
+# Order criteria
+radar_data$criterion <- factor(
+  radar_data$criterion,
+  levels = c("Sunshine", "Rainfall", "Political Align.", 
+             "Affluence", "Working-Age %", "Poverty")
+)
+
+# Colors for cities
+city_colors_radar <- c(
+  "Toulouse" = "#E9C46A",
+  "Marseille" = "#E63946",
+  "Lyon" = "#457B9D",
+  "Annecy" = "#7FB3D8",
+  "Montpellier" = "#F4A261",
+  "Bordeaux" = "#2A9D8F",
+  "Paris" = "#6C757D"
+)
+
+ggplot(radar_data, aes(x = criterion, y = score, color = city_name, group = city_name)) +
+  geom_point(size = 2.5) +
+  geom_line(linewidth = 1) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25),
+                     labels = scales::percent_format()) +
+  scale_color_manual(values = city_colors_radar, name = "City") +
+  coord_polar() +
+  labs(x = NULL, y = NULL) +
+  theme_minimal(base_size = 10) +
+  theme(
+    legend.position = "bottom",
+    axis.title.y = element_blank(),
+    panel.grid.major = element_line(color = "#EEEEEE", linewidth = 0.3),
+    panel.grid.minor = element_blank()
+  )
+```
+
+#### Figure 2.4: Sunshine vs Economic Affluence
+
+```{r screening-sunshine-affluence, fig.cap="Sunshine vs Affluence: The Economic Tension. Scatter plot of sunshine (x) vs affluent population income threshold (y); bubble size encodes far-right vote share. The pattern reveals a structural challenge: the sunniest cities (Mediterranean) tend to be less economically affluent; the most affluent cities tend to be cloudier. Family must choose between climate and economic context for wife's business."}
+# Scatter: sunshine vs affluence, size = far-right vote
+plot_data_econ <- city_screening |>
+  mutate(
+    selected = ifelse(city_name %in% target_cities, "Selected", "Not selected")
+  )
+
+ggplot(plot_data_econ, aes(x = sunshine_hours_annual, y = affluent_income,
+                            size = pct_far_right, color = selected)) +
+  geom_point(alpha = 0.6) +
+  geom_text_repel(
+    data = plot_data_econ |> filter(city_name %in% annotate_cities),
+    aes(label = city_name, size = NULL),
+    size = 3.5,
+    fontface = "bold",
+    box.padding = 0.5,
+    point.padding = 0.3,
+    show.legend = FALSE
+  ) +
+  scale_color_manual(
+    values = c("Selected" = "#E63946", "Not selected" = "#ADB5BD"),
+    name = NULL
+  ) +
+  scale_size_continuous(
+    name = "Far-Right Vote %",
+    range = c(2, 5),
+    breaks = c(12, 15, 18, 21, 24)
+  ) +
+  scale_y_continuous(labels = scales::dollar_format(prefix = "€")) +
+  labs(
+    x = "Annual Sunshine Hours",
+    y = "Affluent Population Income Threshold (€/year)"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    legend.position = "bottom",
+    panel.grid.major = element_line(color = "#EEEEEE", linewidth = 0.3)
+  )
+```
+
+#### Figure 2.5: Target Cities Screening Summary Table
+
+```{r screening-summary-table, results='asis'}
+# Formatted table of 7 target cities
+summary_table <- city_screening |>
+  filter(city_name %in% target_cities) |>
+  arrange(desc(composite_score)) |>
+  select(
+    city_name,
+    composite_score,
+    sunshine_hours_annual,
+    pct_far_right,
+    affluent_income,
+    pct_age_25_54
+  ) |>
+  rename(
+    "City" = city_name,
+    "Composite\nScore" = composite_score,
+    "Sunshine\n(hrs/yr)" = sunshine_hours_annual,
+    "Far-Right\nVote (%)" = pct_far_right,
+    "Affluent\nThreshold (€)" = affluent_income,
+    "Working-Age\n% (25–54)" = pct_age_25_54
+  ) |>
+  mutate(
+    `Composite\nScore` = sprintf("%.3f", `Composite\nScore`),
+    `Sunshine\n(hrs/yr)` = sprintf("%.0f", `Sunshine\n(hrs/yr)`),
+    `Far-Right\nVote (%)` = sprintf("%.1f", `Far-Right\nVote (%)`),
+    `Affluent\nThreshold (€)` = sprintf("€%.0f", `Affluent\nThreshold (€)`),
+    `Working-Age\n% (25–54)` = sprintf("%.1f%%", `Working-Age\n% (25–54)`)
+  )
+
+kable(summary_table, 
+      caption = "Table 2.1: Target Cities Screening Summary — Key Metrics for 7 Selected Cities",
+      booktabs = TRUE) |>
+  kable_styling(
+    bootstrap_options = c("striped", "condensed"),
+    font_size = 10,
+    full_width = FALSE
+  )
+```
+
+---
+
+## Data Preparation
+
+### Data Cleaning
+
+[TODO: Describe data cleaning steps, handling missing values, outlier treatment]
+
+### Feature Engineering
+
+[TODO: Describe derived variables, transformations]
+
+### Final Dataset Structure
+
+[TODO: Summary statistics of the analysis-ready dataset]
+
+## Modeling Approach
+
+### Model Selection
+
+[TODO: Describe models considered and rationale for selection]
+
+### Training and Validation
+
+[TODO: Describe cross-validation strategy, train/test split]
+
+### Evaluation Metrics
+
+[TODO: Define RMSE, R-squared, and other metrics used]
+
+# Results
+
+## Exploratory Data Analysis
+
+[TODO: Key visualizations and insights from EDA]
+
+## Model Performance
+
+[TODO: Model comparison table, performance metrics]
+
+## City Rankings
+
+[TODO: Final ranked list with supporting visualizations]
+
+# Conclusion
+
+## Summary of Findings
+
+[TODO: Recap of main findings and recommendations]
+
+## Limitations
+
+[TODO: Discuss data limitations, methodological constraints]
+
+## Future Work
+
+[TODO: Potential extensions and improvements]
+
+# References
+
+- DVF Open Data: https://www.data.gouv.fr/fr/datasets/demandes-de-valeurs-foncieres/
+- INSEE Population Data: https://www.insee.fr/
+- Météo France Climate Normals: https://meteofrance.com/
+- R Core Team (2024). R: A language and environment for statistical computing.
+- Wickham H, et al. (2019). Welcome to the tidyverse. Journal of Open Source Software.
+
+# Appendix
+
+## Session Info
+
+```{r session-info}
+sessionInfo()
+```

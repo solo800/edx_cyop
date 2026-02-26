@@ -1944,5 +1944,31 @@ for (i in seq_len(nrow(final_ranking))) {
 cat("=== End of City Rankings ===\n")
 
 #-------------------------------------------------------------------------------
+# 6. SAVE REPORT DATA
+#-------------------------------------------------------------------------------
+# Save all objects needed by cyo_report.Rmd so the report can be knit
+# without retraining models. Run this script before knitting the report.
+
+report_data <- list(
+  dvf_houses = dvf_houses,
+  city_screening = city_screening,
+  train_nrow = nrow(train),
+  test_nrow = nrow(test),
+  all_results = all_results,
+  fi_combined = fi_combined,
+  commune_summary = commune_summary,
+  commune_scaled = commune_scaled,
+  std_house = std_house,
+  final_ranking = final_ranking,
+  city_colors = city_colors,
+  model_colors = model_colors,
+  TARGET_DEPTS = TARGET_DEPTS,
+  FINAL_K = FINAL_K
+)
+
+saveRDS(report_data, file.path(DATA_PROCESSED, "report_data.RDS"))
+cat("\nSaved report data to:", file.path(DATA_PROCESSED, "report_data.RDS"), "\n")
+
+#-------------------------------------------------------------------------------
 # END OF SCRIPT
 #-------------------------------------------------------------------------------

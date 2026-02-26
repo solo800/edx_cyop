@@ -1,6 +1,6 @@
 ---
 title: "Finding Home in France: A Data-Driven Approach to City Selection"
-subtitle: "HarvardX PH125.9x Data Science Capstone - Choose Your Own Project"
+subtitle: "HarvardX PH125.9x Data Science Capstone — Choose Your Own Project"
 author: "Adam Solomon"
 date: "`r Sys.Date()`"
 output:
@@ -8,6 +8,7 @@ output:
     toc: true
     toc_depth: 3
     number_sections: true
+    latex_engine: xelatex
   html_document:
     toc: true
     toc_depth: 3
@@ -17,151 +18,719 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
-  echo = TRUE,
-  message = FALSE,
-  warning = FALSE,
-  fig.align = "center",
-  fig.width = 8,
-  fig.height = 6
+    echo = TRUE,
+    message = FALSE,
+    warning = FALSE,
+    fig.align = "center",
+    fig.width = 8,
+    fig.height = 5,
+    out.width = "90%"
 )
 
-# Load required libraries
+# Display libraries — model-training packages are only needed by cyo_script.R
+if (!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if (!require(knitr)) install.packages("knitr", repos = "http://cran.us.r-project.org")
+if (!require(scales)) install.packages("scales", repos = "http://cran.us.r-project.org")
+if (!require(here)) install.packages("here", repos = "http://cran.us.r-project.org")
+
 library(tidyverse)
 library(knitr)
 library(scales)
+library(here)
+
+options(scipen = 999)
+
+# Load pre-computed results from cyo_script.R
+# Run scripts/cyo_script.R before knitting this report.
+PROJECT_ROOT <- here::here()
+DATA_DIR <- file.path(PROJECT_ROOT, "data")
+
+report_data <- readRDS(file.path(DATA_DIR, "report_data.RDS"))
+list2env(report_data, envir = environment())
+rm(report_data)
 ```
 
 # Executive Summary
 
-[TODO: Write after analysis is complete. Include key findings, methodology overview, and main conclusions in 1-2 paragraphs.]
+This project informs a real-life family relocation decision using data science. It combines a weighted composite scoring system across key lifestyle metrics with a machine learning analysis of the French housing market. My family is planning to leave Paris, but where should we go?
+
+The project proceeds in two phases. First, a city screening phase evaluates 55 major French cities across six criteria my family believes are most impactful to our quality of life (sunshine, rainfall, age demographics, affluence, poverty, and political alignment) using weighted composite scoring to narrow the field to seven target cities. 
+
+Those seven cities: Toulouse, Marseille, Lyon, Annecy, Montpellier, Bordeaux, and Paris (included as a benchmark) then move on to the second phase of the project. In phase two we build predictive machine learning models from the DVF (Demandes de Valeurs Foncières) database, a comprehensive open dataset published by the French government containing every property transaction recorded by notaries across France. After filtering out apartments, deduplicating multi-parcel records, and removing outliers the final modeling dataset contains 59,373 transactions from our seven target cities. We then train three supervised algorithms (linear regression, Random Forest, and XGBoost) to predict house prices from property and location features, alongside K-means clustering to identify distinct market tiers across communes.
+
+The best-performing model, XGBoost, achieved an R² of 0.679 on the held-out 2024 test set, explaining roughly two-thirds of house price variance using nine features. The single most impactful improvement came not from algorithm selection but from feature engineering when we introduced commune-level median income data. It boosted tree model R² by approximately 8 points, nearly doubling the gap over linear regression. This finding reinforces a key lesson from the course that the quality of your features matters more than the sophistication of your algorithm.
+
+The final city rankings blend lifestyle criteria from the screening phase with affordability and model predictability from the real estate analysis. The results confirm that no single city dominates in every dimension. Mediterranean cities offer the most sunshine but weaker economic profiles and a political environment that is less aligned with our family, while southwestern cities like Toulouse provide a stronger overall balance of our key lifestyle factors.
 
 # Introduction
 
+## Personal Motivation
+
+I currently live in Paris with my family, and we are planning a relocation to another French city. We are looking for a place with more sunshine, a house with a garden (a rarity in Paris), a community that aligns with our values, and a middle-class to affluent population to support my wife's planned business. Rather than relying on anecdote or real estate agent advice, I wanted to approach this decision with data, which made it a natural fit for a capstone project.
+
+This project is not a toy exercise on a well-known dataset. The DVF database is a rich, messy, real-world source that requires substantial cleaning and domain knowledge to work with. The personal stakes made every modeling choice feel consequential: the train/test split matters because I need predictions for *future* transactions. When we put in an offer on a house, running it through the predictive model and knowing if the house is overpriced, underpriced, or priced just right will be a competitive advantage for us. Also, feature importance matters because it tells me what actually drives prices in each city.
+
 ## Dataset Description
 
-This project analyzes French real estate transaction data from the DVF (Demandes de Valeurs Foncières) database, a comprehensive open dataset published by the French government. The DVF dataset contains all property sales in France from 2020 to 2025, including transaction prices, property characteristics, and geographic information.
+The primary dataset is the **DVF (Demandes de Valeurs Foncières)**, published by the French government on data.gouv.fr. It contains every property transaction recorded by notaries across France, including the sale price, property type, surface area, number of rooms, land area, and location down to the commune (municipality) level. I used five years of data (2020–2024), filtered to house sales ("Maison") in and around seven target cities.
 
 Supplementary datasets include:
 
-- **Communes master file**: Geographic and administrative data for all French municipalities
-- **INSEE population data**: Demographic structure by age brackets at the commune level
-- **Météo France climate normals**: Sunshine hours, temperature, and rainfall data for major cities
+- **INSEE Filosofi 2020**: Commune-level median disposable income and poverty rates, providing neighborhood-level economic context.
+- **Météo France 30-year climate normals**: Annual sunshine hours, temperature, and rainfall for 55 French cities.
+- **INSEE RP 2020**: Population by age bracket at the commune level, used for demographic screening.
+- **2022 Presidential Election results**: First-round vote shares by department, used as a proxy for political alignment.
+- **Communes reference file** (data.gouv.fr): Administrative codes linking communes to departments and regions.
 
 ## Project Goal
 
-The goal of this project is to develop a data-driven methodology for identifying optimal cities for relocation in France, based on a combination of climate preferences, demographic characteristics, and real estate market conditions. The analysis will culminate in predictive models for property values and a ranked list of recommended cities.
+The goal is twofold. First, I screen 55 French cities on lifestyle criteria (climate, demographics, economics, politics) to select a shortlist of candidates. Second, I build machine learning models to predict house prices in these cities. The predictive models serve a practical purpose: when my family finds a house we like, we can run it through the model to estimate whether it is overpriced, fairly priced, or a bargain relative to comparable properties.
 
-## Personal Motivation
+As a final step, I combine the lifestyle scores from phase one with price analysis from phase two to produce a data-driven city ranking, though this synthesis relies more on straightforward data science than on the ML models themselves.
 
-[TODO: Add personal context for why this analysis matters to you.]
+The rubric requires at least two models, with one more advanced than linear regression. I use three supervised approaches (linear regression, Random Forest, XGBoost) to predict house prices from property and location features. Supervised models are appropriate here because we have a clear target variable (sale price) and want to learn the relationship between features and outcomes. I also use K-means clustering as an unsupervised complement. Unlike the supervised models, K-means has no target variable; instead it reveals natural groupings in the data, in this case identifying distinct market tiers across communes that span city boundaries.
 
-# Methods & Analysis
+# Methods and Analysis
 
-## Data Sources
+## City Selection Methodology
 
-The analysis draws on multiple data sources:
+Before diving into real estate modeling, I needed to narrow down France's many cities to a manageable shortlist. I built a screening dataset of 55 major French cities with six normalized criteria:
 
-1. **DVF (Demandes de Valeurs Foncières)**: French government open data on property transactions
-   - Years covered: 2020-2025
-   - Source: data.gouv.fr
+1. **Sunshine** (higher = better): We like the sun and are outdoorsy people
+2. **Rainfall** (lower = better): We prefer dry climates for an outdoor lifestyle
+3. **Working-age population** (higher = better): Percentage of residents aged 25–54, from INSEE census data because socializing with our peers is important to us
+4. **Affluence** (higher = better): Third-quartile disposable income from Filosofi 2020 to better support my wife's business
+5. **Poverty** (lower = better): Poverty rate from Filosofi 2020, inverted, as economically healthy communities better support my wife's planned business
+6. **Political alignment** (lower far-right vote = better): Combined Le Pen + Zemmour first-round vote share from the 2022 presidential election, inverted to align with my family's political leanings
 
-2. **Communes Reference Data**: INSEE administrative boundaries and postal codes
-   - Source: data.gouv.fr
+Each criterion was min-max normalized to a 0–1 scale. I then computed a weighted composite score, giving the highest weight to political alignment (1.0), followed by sunshine, rainfall, and affluence (0.75 each), age demographics (0.5), and poverty (0.25). These weights reflect my personal priorities, someone with different values would produce a different ranking, and that is the point: the framework is reusable even if the weights change.
 
-3. **Population by Age**: INSEE census data with 10 age brackets
-   - Source: data.gouv.fr (INSEE RP 2020)
+```{r city-screening, echo=TRUE, eval=FALSE}
+# Composite scoring weights (iterated through 5 rounds — see Methods text)
+weights <- c(
+    far_right = 1.00, # Primary: political alignment
+    sunshine  = 0.75, # Secondary: climate
+    rainfall  = 0.75, # Secondary: dry climate
+    affluent  = 0.75, # Secondary: affluent population
+    age       = 0.50, # Tertiary: working-age demographics
+    poverty   = 0.25 # Minimal weight
+)
 
-4. **Climate Data**: Météo France 30-year climate normals
-   - Variables: sunshine hours, temperature, rainfall
-
-```{r data-sources, eval=FALSE}
-# Data loading code will be sourced from scripts/cyo_project.R
-source("../scripts/cyo_project.R")
+city_screening <- city_screening |>
+    mutate(
+        composite_score = (
+            sunshine_norm * weights["sunshine"] +
+                rainfall_norm * weights["rainfall"] +
+                affluent_norm * weights["affluent"] +
+                far_right_norm * weights["far_right"] +
+                age_norm * weights["age"] +
+                poverty_norm * weights["poverty"]
+        ) / sum(weights)
+    )
 ```
 
-## City Selection Criteria
+The full city screening pipeline including data acquisition, joins, min-max normalization, and composite scoring is implemented in Sections 1 through 2.9 of `cyo_script.R` (lines 64–394).
 
-To identify candidate cities for relocation, I filtered France's major metropolitan areas using three criteria: climate (annual sunshine hours), demographics (population age structure), and real estate market dynamics. The following visualizations illustrate why [FINAL CITIES] emerged as top candidates.
+The top-ranked cities are shown below. I selected the top six candidates plus Paris as a benchmark, giving seven cities for deep analysis.
 
-### Climate Screening
+```{r screening-table, echo=FALSE}
+city_screening |>
+    filter(department_code %in% TARGET_DEPTS) |>
+    arrange(desc(composite_score)) |>
+    select(
+        City = city_name, `Sunshine (hrs/yr)` = sunshine_hours_annual,
+        `Far-Right %` = pct_far_right,
+        `Composite Score` = composite_score
+    ) |>
+    mutate(
+        `Composite Score` = round(`Composite Score`, 3),
+        `Far-Right %` = round(`Far-Right %`, 1)
+    ) |>
+    kable(caption = "Target cities ranked by composite lifestyle score")
+```
 
-[TODO: Visualizations of sunshine hours, temperature comparisons]
+Looking at this list there is still a question to be answered: why not just take the top seven cities? Some factors that matter to our family do not lend themselves to quantitative scoring. For example, Bordeaux ranked 12th overall but its two-hour TGV connection to Paris keeps us close to family and friends. Aix-en-Provence scored well but shares a department with Marseille, so including both would double-count the same real estate market in the modeling phase. Due to factors like these we selected seven cities that best suited our particular family to build the ML models on.
 
-### Demographic Screening
+## DVF Data Preparation
 
-[TODO: Population age structure analysis, dependency ratios]
+### Commune-Level Filtering
 
-### Real Estate Market Screening
+A key methodological choice was how to define "a city" in the DVF data. French cities like Lyon and Paris have very few house sales within the administrative city limits — most houses are in surrounding suburbs. I used IGN commune boundary polygons and the `sf::st_touches()` function (in a separate preprocessing script) to identify all communes adjacent to each target city. This produced a lookup table of 159 communes across 10 departments (Paris suburbs span departments 92, 93, and 94 beyond the city's own 75).
 
-[TODO: Price trends, transaction volumes, market liquidity]
+Each commune was assigned a "ring" indicator: ring 0 for the city proper, ring 1 for adjacent suburbs. This became an important modeling feature — suburban houses tend to be cheaper per square meter but larger.
 
-## Data Preparation
+### Loading and Filtering
+
+I loaded the five DVF files (2020 S2 through 2024), filtered to house sales ("Maison" + "Vente") in the 159 target communes, and joined the commune metadata. This produced 68,006 raw transactions.
+
+```{r load-data, echo=TRUE, eval=FALSE}
+# Load the pre-processed clean dataset
+dvf_houses <- read_csv(
+    file.path(DATA_DIR, "dvf_houses_clean.csv"),
+    show_col_types = FALSE,
+    col_types = cols(insee_code = col_character())
+)
+```
 
 ### Data Cleaning
 
-[TODO: Describe data cleaning steps, handling missing values, outlier treatment]
+The raw DVF data required several cleaning steps:
 
-### Feature Engineering
+1. **Deduplication**: DVF repeats rows when a property spans multiple cadastral parcels. I grouped by mutation key and summed land area across parcels (68,006 → 61,133 rows).
+2. **Missing values**: Dropped 46 transactions with missing prices.
+3. **Outlier removal**: Applied conservative bounds — prices between €10,000 and €5,000,000, built area between 20 and 1,000 m², and 1 to 20 rooms — removing 504 rows.
+4. **Price-per-m² trimming**: Removed the top and bottom 1% of price-per-m² values to catch remaining data quality issues (1,210 rows).
+5. **Feature engineering**: Computed `prix_m2` (price per square meter) and `has_land` (binary indicator for properties with land area recorded).
+6. **Income enrichment**: Joined commune-level median disposable income from INSEE Filosofi 2020, achieving 100% coverage across all transactions.
 
-[TODO: Describe derived variables, transformations]
+The cleaning pipeline removed 12.7% of rows, leaving **`r format(nrow(dvf_houses), big.mark = ",")`** transactions for analysis.
 
-### Final Dataset Structure
-
-[TODO: Summary statistics of the analysis-ready dataset]
-
-## Modeling Approach
-
-### Model Selection
-
-[TODO: Describe models considered and rationale for selection]
-
-### Training and Validation
-
-[TODO: Describe cross-validation strategy, train/test split]
-
-### Evaluation Metrics
-
-[TODO: Define RMSE, R-squared, and other metrics used]
-
-# Results
+```{r cleaning-summary, echo=FALSE}
+dvf_houses |>
+    group_by(City = target_city) |>
+    summarise(
+        Transactions = n(),
+        `Median Price` = paste0("\u20ac", comma(round(median(`Valeur fonciere`)))),
+        `Median €/m²` = paste0("\u20ac", comma(round(median(prix_m2)))),
+        `Median m²` = round(median(`Surface reelle bati`)),
+        .groups = "drop"
+    ) |>
+    kable(caption = "Clean dataset summary by city")
+```
 
 ## Exploratory Data Analysis
 
-[TODO: Key visualizations and insights from EDA]
+### Price Distribution by City
 
-## Model Performance
+The box plot below reveals the substantial price differences across cities. Paris and Annecy are the most expensive markets (median above €5,000/m²), while Toulouse is the most affordable at roughly €3,500/m². The spread within each city is considerable — a sign that location-specific features (neighborhood, proximity to center) matter a great deal.
 
-[TODO: Model comparison table, performance metrics]
+```{r eda-boxplot, echo=FALSE, fig.height=5}
+ggplot(dvf_houses, aes(x = target_city, y = prix_m2, fill = target_city)) +
+    geom_boxplot(outlier.alpha = 0.1, outlier.size = 0.5) +
+    scale_y_continuous(labels = label_comma(big.mark = " ", suffix = " \u20ac/m\u00b2")) +
+    scale_fill_manual(values = city_colors) +
+    labs(title = "Price per m\u00b2 by City", x = NULL, y = "Price per m\u00b2") +
+    theme_minimal(base_size = 12) +
+    theme(legend.position = "none")
+```
 
-## City Rankings
+### Temporal Trends
 
-[TODO: Final ranked list with supporting visualizations]
+Median prices per m² were relatively stable across the five-year window, with some cities showing modest appreciation (Annecy, Paris) and others flattening or declining slightly after 2022 (Bordeaux, Toulouse). Despite this relatively low signal, including year as a feature allowed the model to account more easily for any gradual temporal drift and would likely become more important were the dataset to grow to span decades.
+
+```{r eda-temporal, echo=FALSE, fig.height=4.5}
+yearly_city <- dvf_houses |>
+    group_by(target_city, year) |>
+    summarise(median_prix_m2 = median(prix_m2), .groups = "drop")
+
+ggplot(yearly_city, aes(x = year, y = median_prix_m2, color = target_city, group = target_city)) +
+    geom_line(linewidth = 1) +
+    geom_point(size = 2.5) +
+    scale_y_continuous(labels = label_comma(big.mark = " ", suffix = " \u20ac/m\u00b2")) +
+    scale_color_manual(values = city_colors) +
+    labs(
+        title = "Median Price per m\u00b2 Over Time (2020\u20132024)",
+        x = "Year", y = "Median \u20ac/m\u00b2", color = "City"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(legend.position = "bottom")
+```
+
+### The Ring Effect: City Center vs. Suburbs
+
+One of the more interesting patterns is how the price gap between city proper (ring 0) and adjacent suburbs (ring 1) varies by city. In Paris, the gap is enormous with city-center houses commanding roughly double the price per m² of suburban ones. In Montpellier, the pattern reverses: suburbs are slightly more expensive. What does this mean for our modeling? A single ring coefficient in linear regression would average the Paris premium with the Montpellier reversal and get both wrong. This is why the linear model uses interaction terms between city and ring, giving each city its own urban premium. Tree-based models discover these city-specific patterns automatically through splits.
+
+```{r eda-ring, echo=FALSE, fig.height=5}
+ggplot(dvf_houses, aes(x = ring_label, y = prix_m2, fill = ring_label)) +
+    geom_boxplot(outlier.alpha = 0.1, outlier.size = 0.5) +
+    facet_wrap(~target_city, scales = "free_y", ncol = 4) +
+    scale_y_continuous(labels = label_comma(big.mark = " ", suffix = " \u20ac/m\u00b2")) +
+    scale_fill_brewer(palette = "Set2") +
+    labs(
+        title = "Price per m\u00b2 \u2014 City Center vs Adjacent Suburbs",
+        x = NULL, y = "Price per m\u00b2", fill = NULL
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(legend.position = "bottom", axis.text.x = element_blank())
+```
+
+### The Income Effect
+
+Perhaps the most telling EDA finding is what I call the "income effect." When I restrict the data to similarly-sized houses (~100 m²) and split each city's communes into low-income and high-income halves, the price gap is striking. In Lyon, a ~100 m² house in a high-income commune costs roughly 50% more than the same-sized house in a low-income commune. Paris shows a similar pattern at 44%, and even mid-range cities like Montpellier and Marseille show 20–25% premiums. This motivated the addition of commune-level median income as a model feature.
+
+However, the pattern is not universal. In Toulouse, Bordeaux, and Annecy the relationship reverses slightly, with low-income communes showing marginally higher prices for the same-sized house. This suggests that commune-level income, while powerful, is too coarse a proxy in some markets. A commune might have low overall income but contain a pocket of desirable houses near a lake, a historic center, or good schools that command premiums the income data cannot capture. I suspect that more granular location data at the neighborhood or street level would resolve these reversals, a puzzle I will return to in the Limitations section.
+
+```{r eda-income-effect, echo=FALSE, fig.height=5}
+slope_data <- dvf_houses |>
+    filter(`Surface reelle bati` >= 85, `Surface reelle bati` <= 115) |>
+    group_by(target_city) |>
+    mutate(income_tier = ifelse(
+        median_income_commune <= median(median_income_commune, na.rm = TRUE),
+        "Low Income\nCommunes", "High Income\nCommunes"
+    )) |>
+    ungroup() |>
+    group_by(target_city, income_tier) |>
+    summarise(
+        median_price = median(`Valeur fonciere`, na.rm = TRUE),
+        n = n(),
+        .groups = "drop"
+    ) |>
+    mutate(income_tier = factor(
+        income_tier,
+        levels = c("Low Income\nCommunes", "High Income\nCommunes")
+    ))
+
+ggplot(slope_data, aes(
+    x = income_tier, y = median_price,
+    group = target_city, color = target_city
+)) +
+    geom_line(linewidth = 1.2) +
+    geom_point(size = 3.5) +
+    geom_text(
+        data = slope_data |> filter(income_tier == "High Income\nCommunes"),
+        aes(label = target_city), hjust = -0.15, size = 3.5
+    ) +
+    scale_y_continuous(labels = label_comma(prefix = "\u20ac")) +
+    scale_color_manual(values = city_colors) +
+    labs(
+        title = "Same-Sized House, Different Price: The Income Effect",
+        subtitle = "Median price of ~100 m\u00b2 houses in low vs high income communes",
+        x = NULL, y = "Median House Price"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(legend.position = "none")
+```
+
+### Feature Correlations
+
+```{r eda-correlations, echo=FALSE}
+numeric_features <- dvf_houses |>
+    select(
+        `Valeur fonciere`, `Surface reelle bati`, `Nombre pieces principales`,
+        `Surface terrain`, prix_m2, year
+    ) |>
+    rename(
+        price = `Valeur fonciere`, surface = `Surface reelle bati`,
+        rooms = `Nombre pieces principales`, land = `Surface terrain`,
+        price_m2 = prix_m2
+    )
+
+cor_matrix <- cor(numeric_features, use = "pairwise.complete.obs")
+kable(round(cor_matrix, 2), caption = "Correlation matrix of numeric features")
+```
+
+The correlation matrix confirms several expected relationships and reveals some useful patterns. Surface area is the strongest predictor of price among features used in the model (r = 0.64), followed by rooms (r = 0.46). Note that price per m² shows a higher correlation with price (r = 0.67) but is excluded from modeling because it is derived directly from the target variable (price / surface), which would constitute data leakage.
+
+Surface and rooms are highly correlated with each other (r = 0.74), meaning they carry a lot of overlapping information. In a linear model, this multicollinearity can inflate standard errors and make individual coefficients harder to interpret. I considered dropping rooms to reduce redundancy, but ultimately kept both because tree-based models handle correlated features naturally and rooms still contributes meaningful predictive power (12.2% of XGBoost gain) despite the overlap with surface.
+
+Land area has a weaker relationship with price (r = 0.18), suggesting that lot size plays a secondary role compared to the house itself. Year shows essentially zero correlation with all other variables, reinforcing the observation from the temporal trends that the market was relatively stable over this five-year window.
+
+## Modeling Approach
+
+### Train/Test Split
+
+I used a **temporal split**: training on 2020–2023 and testing on 2024. This is the natural choice for real estate because prices are path-dependent, a random split would leak future market conditions into the training data. A family making a purchase decision in 2024 would only have access to historical data, so the temporal split mirrors the real-world use case.
+
+```{r train-test-split, eval=FALSE}
+train <- dvf_houses |> filter(year <= 2023)
+test <- dvf_houses |> filter(year == 2024)
+```
+
+This produced a `r format(train_nrow, big.mark = ",")`/`r format(test_nrow, big.mark = ",")` split (`r round(train_nrow/nrow(dvf_houses)*100)`/`r round(test_nrow/nrow(dvf_houses)*100)`%). The split is roughly proportional across cities — each city contributes 16–19% of its transactions to the test set.
+
+### Feature Selection
+
+I selected nine features based on domain knowledge and EDA insights:
+
+| Feature | Type | Description |
+|---------|------|-------------|
+| surface | numeric | Built area in square meters |
+| rooms | numeric | Number of main rooms |
+| land | numeric | Land area in square meters, 0 where no land |
+| target_city | factor (7 levels) | City group: Toulouse, Marseille, Lyon, Annecy, Montpellier, Bordeaux, Paris |
+| ring | integer 0/1 | 0 = city proper, 1 = adjacent suburb |
+| year | numeric | Transaction year (2020-2024) |
+| quarter | integer 1-4 | Quarter of year |
+| has_land | integer 0/1 | Whether property has recorded land area |
+| median_income | numeric | Commune-level median disposable income from INSEE Filosofi 2020 |
+
+**Target variable:** price (Valeur fonciere) — the sale price in euros.
+
+Nine features were selected for modeling based on the EDA findings and domain knowledge. Column names were cleaned for compatibility with the randomForest and xgboost packages, which do not handle spaces in variable names. Categorical variables were cast to appropriate types: target_city as a factor with seven levels, and ring, quarter, and has_land as integers. I deliberately excluded prix_m2 (price per square meter) because it is derived from the target variable — including it would constitute data leakage. The commune-level median income was the last feature added and proved to be the most impactful single addition (see Results). The full feature preparation code is in Section 4.2 of cyo_script.R.
+
+### Evaluation Metrics
+
+I evaluate each model using three metrics: RMSE (root mean squared error, in euros), MAE (mean absolute error, more robust to outliers), and R² (proportion of variance explained). All metrics are computed on the held-out 2024 test set. I also report per-city breakdowns to ensure no city is systematically underserved by the pooled model.
+
+The evaluation functions are implemented in Section 4.3 of cyo_script.R.
+
+### Model 1: Linear Regression (Baseline)
+
+Linear regression provides a transparent baseline. To handle the fact that different cities have different price structures, I included interaction terms: `target_city × surface` (each city gets its own price-per-m² slope) and `target_city × ring` (each city gets its own urban premium). Without these interactions, a single pooled slope would be dominated by high-volume cities like Bordeaux.
+
+```{r lm-model, eval=FALSE}
+lm_formula <- price ~ target_city * (surface + ring) + rooms + land +
+    year + quarter + has_land + median_income
+
+lm_fit <- lm(lm_formula, data = train_model)
+lm_pred_test <- predict(lm_fit, newdata = test_model)
+lm_results <- evaluate_model(
+    test_model$price, lm_pred_test,
+    as.character(test_model$target_city), "Linear Regression"
+)
+all_results <- bind_rows(all_results, lm_results)
+```
+
+### Model 2: Random Forest
+
+Random Forest handles non-linear relationships and feature interactions naturally — no need to specify them manually. The 500-tree ensemble learns city-specific patterns through recursive splits. This is the key advantage over linear regression: the model can discover that, say, land area matters more in Toulouse than in Paris without being told.
+
+```{r rf-model, eval=FALSE}
+set.seed(42)
+rf_fit <- randomForest(price ~ ., data = train_model, ntree = 500, importance = TRUE)
+rf_pred_test <- predict(rf_fit, newdata = test_model)
+rf_results <- evaluate_model(
+    test_model$price, rf_pred_test,
+    as.character(test_model$target_city), "Random Forest"
+)
+all_results <- bind_rows(all_results, rf_results)
+```
+
+### Model 3: XGBoost
+
+XGBoost (extreme gradient boosting) builds an ensemble of shallow decision trees sequentially, with each tree correcting the errors of the previous ones. It requires numeric input, so I one-hot encoded the `target_city` factor. I used a 20% validation holdout from the training data for early stopping — this prevents the test set from influencing model selection (number of boosting rounds), which would bias the test metrics upward.
+
+```{r xgb-model, eval=FALSE}
+set.seed(42)
+val_idx <- sample(nrow(train_model), size = floor(0.2 * nrow(train_model)))
+train_model_xgb <- train_model[-val_idx, ]
+val_model_xgb <- train_model[val_idx, ]
+
+make_matrix <- function(df) {
+    model.matrix(
+        ~ surface + rooms + land + target_city + ring +
+            year + quarter + has_land + median_income,
+        data = df
+    )[, -1]
+}
+
+train_x <- make_matrix(train_model_xgb)
+val_x <- make_matrix(val_model_xgb)
+test_x <- make_matrix(test_model)
+
+dtrain <- xgb.DMatrix(data = train_x, label = train_model_xgb$price)
+dval <- xgb.DMatrix(data = val_x, label = val_model_xgb$price)
+dtest <- xgb.DMatrix(data = test_x, label = test_model$price)
+
+set.seed(42)
+xgb_fit <- xgb.train(
+    params = list(
+        objective = "reg:squarederror", max_depth = 6,
+        eta = 0.1, subsample = 0.8, colsample_bytree = 0.8
+    ),
+    data = dtrain, nrounds = 1000,
+    evals = list(train = dtrain, val = dval),
+    early_stopping_rounds = 50, verbose = 0
+)
+
+xgb_pred_test <- predict(xgb_fit, dtest)
+xgb_results <- evaluate_model(
+    test_model$price, xgb_pred_test,
+    as.character(test_model$target_city), "XGBoost"
+)
+all_results <- bind_rows(all_results, xgb_results)
+```
+
+### Model 4: K-Means Clustering (Unsupervised)
+
+As a complement to the supervised models, I used K-means clustering to segment communes by their real estate market characteristics. I aggregated transactions to the commune level (median price/m², surface, rooms, land area, transaction volume, and median income), scaled the six features, and tested k = 2 through 8 using both the elbow method (within-cluster sum of squares) and silhouette analysis. The silhouette-optimal k was 6, but this produced singleton clusters, so I chose k = 4 for interpretability.
+
+```{r kmeans-model, eval=FALSE}
+commune_summary <- dvf_houses |>
+    group_by(insee_code, commune_name, target_city, ring) |>
+    summarise(
+        median_prix_m2 = median(prix_m2, na.rm = TRUE),
+        median_surface = median(`Surface reelle bati`, na.rm = TRUE),
+        median_rooms = median(`Nombre pieces principales`, na.rm = TRUE),
+        median_land = median(`Surface terrain`, na.rm = TRUE),
+        n_transactions = n(),
+        median_income = median(median_income_commune, na.rm = TRUE),
+        .groups = "drop"
+    ) |>
+    filter(n_transactions >= 10, !is.na(median_income))
+
+cluster_features <- c(
+    "median_prix_m2", "median_surface", "median_rooms",
+    "median_land", "n_transactions", "median_income"
+)
+commune_scaled <- scale(commune_summary[, cluster_features])
+
+FINAL_K <- 4
+set.seed(42)
+km_fit <- kmeans(commune_scaled, centers = FINAL_K, nstart = 25)
+commune_summary$cluster <- factor(km_fit$cluster)
+```
+
+# Results
+
+## Overall Model Comparison
+
+```{r results-overall, echo=FALSE}
+overall <- all_results |> filter(scope == "Overall")
+
+overall |>
+    mutate(
+        RMSE = paste0("\u20ac", comma(round(rmse))),
+        MAE = paste0("\u20ac", comma(round(mae))),
+        `R²` = sprintf("%.3f", r2)
+    ) |>
+    select(Model = model, n, RMSE, MAE, `R²`) |>
+    kable(caption = "Overall model performance on 2024 test set")
+```
+
+XGBoost achieved the best performance with an R² of `r sprintf("%.3f", overall$r2[overall$model == "XGBoost"])`, closely followed by Random Forest (`r sprintf("%.3f", overall$r2[overall$model == "Random Forest"])`). Both tree models substantially outperformed linear regression, reducing RMSE by approximately 11% and MAE by 17%.
+
+The narrow gap between Random Forest and XGBoost (R² difference of just 0.003) suggests that the performance ceiling is driven by *missing features* rather than model complexity. The DVF dataset does not include property condition, renovation status, energy performance rating, proximity to transit, or school quality — all of which influence house prices. A more sophisticated algorithm cannot recover information that is not in the data.
+
+```{r results-r2-chart, echo=FALSE, fig.height=3.5}
+overall |>
+    mutate(model = fct_reorder(model, r2)) |>
+    ggplot(aes(x = model, y = r2, fill = model)) +
+    geom_col(width = 0.6) +
+    geom_text(aes(label = sprintf("%.3f", r2)), hjust = -0.15, size = 4) +
+    coord_flip(ylim = c(0, max(overall$r2) * 1.12)) +
+    scale_fill_manual(values = model_colors) +
+    labs(title = "Overall R\u00b2 by Model (Test Set: 2024)", x = NULL, y = "R\u00b2") +
+    theme_minimal(base_size = 12) +
+    theme(legend.position = "none")
+```
+
+## Per-City Performance
+
+```{r results-per-city, echo=FALSE, fig.height=5}
+xgb_city_order <- all_results |>
+    filter(model == "XGBoost", scope != "Overall") |>
+    arrange(r2) |>
+    pull(scope)
+
+per_city <- all_results |>
+    filter(scope != "Overall") |>
+    mutate(scope = factor(scope, levels = xgb_city_order))
+
+xgb_overall_r2 <- overall$r2[overall$model == "XGBoost"]
+
+ggplot(per_city, aes(x = scope, y = r2, fill = model)) +
+    geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+    geom_hline(yintercept = xgb_overall_r2, linetype = "dashed", color = "grey30") +
+    annotate(
+        "text",
+        x = 0.5, y = xgb_overall_r2 + 0.015,
+        label = paste0("Overall R\u00b2 = ", round(xgb_overall_r2, 3)),
+        hjust = 0, size = 3.2, color = "grey30"
+    ) +
+    scale_fill_manual(values = model_colors) +
+    labs(title = "R\u00b2 by City and Model", x = NULL, y = "R\u00b2", fill = "Model") +
+    theme_minimal(base_size = 12) +
+    theme(legend.position = "bottom", axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+The per-city results reveal important heterogeneity. **Paris is the most predictable market** (R² ≈ 0.74), likely because the large income variation across its many communes provides a strong price signal. **Toulouse is the hardest to predict** (R² ≈ 0.43 for XGBoost) despite having the most training data — its market is simply more heterogeneous, with price variation driven by factors our features cannot capture.
+
+Notably, Annecy (the smallest sample with only 419 test transactions) performs mid-pack (R² ≈ 0.57), suggesting that sample imbalance is not the primary driver of per-city performance differences.
+
+## Feature Importance
+
+```{r feature-importance, echo=FALSE, fig.height=5}
+ggplot(fi_combined, aes(x = feature, y = importance, fill = model)) +
+    geom_col(width = 0.7) +
+    coord_flip() +
+    facet_wrap(~model) +
+    scale_fill_manual(values = c("Random Forest" = "#2A9D8F", "XGBoost" = "#E63946")) +
+    scale_y_continuous(labels = percent_format()) +
+    labs(
+        title = "Feature Importance: Random Forest vs XGBoost",
+        x = NULL, y = "Relative Importance"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(legend.position = "none")
+```
+
+Both models agree that **surface area** is the dominant predictor, which is unsurprising — bigger houses cost more. The more interesting finding is that **commune-level median income** ranks as the second most important feature in XGBoost (19.2% of total gain). This confirms the EDA insight: neighborhood wealth is a powerful proxy for desirability, school quality, and amenities. The city identifier and ring (center vs. suburb) provide geographic context, while rooms, land area, and temporal features round out the picture.
+
+## Impact of the Income Feature
+
+Adding commune-level median income was the single most impactful modeling decision. The table below shows the before-and-after comparison (the "before" values come from a prior run of the pipeline without the income feature):
+
+```{r income-impact, echo=FALSE}
+# Hardcoded "before" values from prior run without median_income feature
+before <- tibble(
+    Model = c("Linear Regression", "Random Forest", "XGBoost"),
+    `R² Before` = c(0.554, 0.597, 0.599),
+    `R² After` = c(
+        overall$r2[overall$model == "Linear Regression"],
+        overall$r2[overall$model == "Random Forest"],
+        overall$r2[overall$model == "XGBoost"]
+    )
+) |>
+    mutate(
+        `Δ R²` = `R² After` - `R² Before`,
+        across(starts_with("R"), ~ sprintf("%.3f", .)),
+        `Δ R²` = sprintf("+%.3f", as.numeric(`R² After`) - as.numeric(`R² Before`))
+    )
+
+kable(before, caption = "Impact of adding commune-level median income feature")
+```
+
+Tree models gained roughly 8 R² points — nearly doubling the improvement gap over linear regression. The reason is that tree models can use income to create non-linear interaction effects (e.g., "if income > €25,000 AND surface > 100 m², predict a premium"), while linear regression only gets a single additive coefficient.
+
+## K-Means Market Clustering
+
+The K-means analysis (k=4) reveals four distinct market tiers across the seven cities:
+
+```{r kmeans-centroids, echo=FALSE}
+centroids <- commune_summary |>
+    group_by(Cluster = cluster) |>
+    summarise(
+        Communes = n(),
+        `Median €/m²` = round(mean(median_prix_m2)),
+        `Median Surface` = round(mean(median_surface)),
+        `Avg Transactions` = round(mean(n_transactions)),
+        `Median Income` = paste0("\u20ac", comma(round(mean(median_income)))),
+        .groups = "drop"
+    ) |>
+    arrange(desc(`Median €/m²`))
+
+kable(centroids, caption = "K-means cluster centroids (k=4)")
+```
+
+```{r kmeans-pca, echo=FALSE, fig.height=5}
+pca_fit <- prcomp(commune_scaled)
+pca_var <- summary(pca_fit)$importance[2, 1:2]
+
+pca_df <- tibble(
+    PC1 = pca_fit$x[, 1], PC2 = pca_fit$x[, 2],
+    cluster = commune_summary$cluster, target_city = commune_summary$target_city
+)
+
+ggplot(pca_df, aes(x = PC1, y = PC2, color = cluster, shape = target_city)) +
+    geom_point(size = 2.5, alpha = 0.8) +
+    scale_shape_manual(values = c(16, 17, 15, 3, 7, 8, 18)) +
+    labs(
+        title = "K-Means Clusters: PCA Biplot",
+        x = paste0("PC1 (", round(pca_var[1] * 100, 1), "% variance)"),
+        y = paste0("PC2 (", round(pca_var[2] * 100, 1), "% variance)"),
+        color = "Cluster", shape = "City"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(legend.position = "bottom", legend.box = "vertical")
+```
+
+The PCA biplot shows that clusters cut across city boundaries — Paris communes appear in multiple tiers, and some suburban communes around Lyon and Annecy share market characteristics with central Marseille. This cross-city clustering adds nuance to the relocation decision: it is not just about choosing a city, but about choosing the right neighborhood tier within that city.
+
+## City Rankings and Predictions
+
+To produce a practical recommendation, I used the XGBoost model to predict the price of a "standard house" (100 m², 4 rooms, 500 m² land, city proper, 2024 Q2) in each city, using city-specific median commune income.
+
+```{r city-predictions, echo=FALSE, fig.height=4}
+lollipop_data <- std_house |>
+    mutate(
+        city_label = fct_reorder(target_city, predicted_price),
+        price_label = paste0("\u20ac", comma(round(predicted_price / 1000)), "k")
+    )
+
+ggplot(lollipop_data, aes(x = city_label, y = predicted_price)) +
+    geom_segment(
+        aes(xend = city_label, y = 0, yend = predicted_price, color = target_city),
+        linewidth = 1.2
+    ) +
+    geom_point(aes(color = target_city), size = 4) +
+    geom_text(aes(label = price_label), hjust = -0.3, size = 3.5) +
+    scale_y_continuous(
+        labels = comma_format(prefix = "\u20ac"),
+        expand = expansion(mult = c(0, 0.15))
+    ) +
+    scale_color_manual(values = city_colors) +
+    coord_flip() +
+    labs(
+        title = "Predicted Price: Standard 100 m\u00b2 House by City",
+        subtitle = "4 rooms, 500 m\u00b2 land, city proper, 2024 Q2 | XGBoost model",
+        x = NULL, y = "Predicted Price"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(legend.position = "none")
+```
+
+### Multi-Criteria Ranking
+
+The final ranking combines three dimensions with explicit weights: lifestyle (50%, from the composite screening score), affordability (30%, inverted predicted price), and model predictability (20%, XGBoost R²). Including predictability rewards cities where our model's predictions are more reliable — useful when the prediction will inform an actual purchase decision.
+
+```{r final-ranking, echo=FALSE}
+final_ranking |>
+    mutate(Rank = row_number()) |>
+    mutate(across(
+        c(composite_score, affordability, predictability, blended_score),
+        ~ sprintf("%.3f", .)
+    )) |>
+    select(
+        Rank,
+        City = target_city, `Blended Score` = blended_score,
+        `Lifestyle Score` = composite_score,
+        Affordability = affordability,
+        Predictability = predictability
+    ) |>
+    kable(caption = "Final city ranking (50% lifestyle + 30% affordability + 20% predictability)")
+```
+
+**Toulouse emerges as the top-ranked city**, with the best balance of lifestyle quality, housing affordability, and a reasonably predictable market. It offers roughly 2,000 hours of annual sunshine, a low far-right vote share, and the most affordable standard house price among the candidates. Marseille and Lyon follow as strong alternatives — Marseille offers the most sunshine but a somewhat less predictable market, while Lyon provides excellent infrastructure but at a higher price point.
+
+Paris, despite having the highest model predictability (R² = 0.74), ranks last due to its extreme prices and lower lifestyle scores. This confirms the intuition that motivated the project: Paris is a great city to leave, not to buy a house in.
 
 # Conclusion
 
-## Summary of Findings
+## Summary
 
-[TODO: Recap of main findings and recommendations]
+This project demonstrated a complete data science pipeline applied to a real-world decision: choosing the best French city to relocate to. Starting with a screening of 55 cities across six lifestyle dimensions, I narrowed the field to seven candidates and built predictive models using nearly 60,000 house transactions from the DVF open dataset.
+
+The key technical findings are: (1) XGBoost and Random Forest substantially outperform linear regression for house price prediction, explaining about 68% of price variance on the 2024 test set; (2) commune-level median income is a remarkably powerful feature, boosting tree model R² by approximately 8 points; and (3) model performance varies significantly across cities, with Paris being most predictable and Toulouse most challenging, in ways that are not explained by sample size alone.
+
+The practical conclusion is that Toulouse offers the best combination of affordable housing, favorable climate, and community alignment for my specific priorities. The framework itself — weighted composite scoring plus ML-based affordability analysis — is reusable for anyone with different preferences.
 
 ## Limitations
 
-[TODO: Discuss data limitations, methodological constraints]
+Several limitations affect the analysis:
+
+The R² of 0.68 means roughly one-third of price variance remains unexplained. The DVF dataset lacks critical property attributes: house condition, renovation status, energy performance rating (DPE), proximity to public transit, and school catchment quality. These omissions likely explain much of the residual error and the heterogeneity in per-city performance.
+
+The commune-level income data is from a single year (Filosofi 2020) and is applied uniformly to transactions from 2020 through 2024. In reality, neighborhood incomes evolve over time. The 2020-only data for the first year covers only the second semester, introducing a mild seasonal imbalance.
+
+The city screening weights are subjective. Different weights would produce a different ranking — someone who prioritizes sunshine over politics would favor Marseille or Montpellier. The framework is transparent about this subjectivity, but it is a limitation nonetheless.
+
+Finally, the temporal train/test split, while realistic, means the model is trained predominantly on a period of rising prices (2020–2022) and cooling prices (2023), then tested on a relatively stable 2024. A future market shift could degrade performance.
 
 ## Future Work
 
-[TODO: Potential extensions and improvements]
+Several extensions could improve the analysis. Incorporating DPE (energy performance) ratings, which are increasingly available via open data, would add a significant predictor. Geospatial features — distance to nearest metro station, school quality index, proximity to green space — could be computed from OpenStreetMap data and would likely close much of the remaining R² gap.
+
+On the modeling side, a stacked ensemble (combining linear regression, RF, and XGBoost predictions) could squeeze out marginal gains. City-specific models rather than a single pooled model might improve performance for difficult markets like Toulouse, at the cost of smaller training samples.
+
+For the relocation decision itself, a natural next step is to use the trained model as a property valuation tool — feeding in specific listings to identify undervalued houses in the target city.
 
 # References
 
-- DVF Open Data: https://www.data.gouv.fr/fr/datasets/demandes-de-valeurs-foncieres/
-- INSEE Population Data: https://www.insee.fr/
-- Météo France Climate Normals: https://meteofrance.com/
-- R Core Team (2024). R: A language and environment for statistical computing.
-- Wickham H, et al. (2019). Welcome to the tidyverse. Journal of Open Source Software.
+- DVF (Demandes de Valeurs Foncières): https://www.data.gouv.fr/fr/datasets/demandes-de-valeurs-foncieres/
+- INSEE Filosofi 2020 (commune-level income): https://www.insee.fr/fr/statistiques/6692392
+- INSEE RP 2020 (population by age): https://www.insee.fr/
+- Météo France climate normals: https://meteofrance.com/
+- 2022 Presidential Election results: https://www.data.gouv.fr/datasets/election-presidentielle-des-10-et-24-avril-2022-resultats-definitifs-du-1er-tour
+- IGN commune boundaries (for adjacency analysis): https://www.data.gouv.fr/
+- R Core Team (2024). R: A language and environment for statistical computing. https://www.R-project.org/
+- Wickham H, et al. (2019). Welcome to the tidyverse. *Journal of Open Source Software*, 4(43), 1686.
+- Liaw A, Wiener M (2002). Classification and Regression by randomForest. *R News*, 2(3), 18-22.
+- Chen T, Guestrin C (2016). XGBoost: A Scalable Tree Boosting System. *Proc. 22nd ACM SIGKDD*, 785-794.
 
-# Appendix
+\newpage
 
-## Session Info
+# Appendix: Session Info
 
 ```{r session-info}
 sessionInfo()
