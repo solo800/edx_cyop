@@ -102,7 +102,7 @@ LOCAL_DATA <- file.path(PROJECT_ROOT, "local_data")
 .Rdata
 .RData
 Rplots.pdf
-*.Rproj.user/
+.Rproj.user/
 
 # OS files
 .DS_Store

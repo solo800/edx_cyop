@@ -58,7 +58,7 @@ The project proceeds in two phases. First, a city screening phase evaluates 55 m
 
 Those seven cities: Toulouse, Marseille, Lyon, Annecy, Montpellier, Bordeaux, and Paris (included as a benchmark) then move on to the second phase of the project. In phase two we build predictive machine learning models from the DVF (Demandes de Valeurs Foncières) database, a comprehensive open dataset published by the French government containing every property transaction recorded by notaries across France. After filtering out apartments, deduplicating multi-parcel records, and removing outliers the final modeling dataset contains 59,373 transactions from our seven target cities. We then train three supervised algorithms (linear regression, Random Forest, and XGBoost) to predict house prices from property and location features, alongside K-means clustering to identify distinct market tiers across communes.
 
-The best-performing model, XGBoost, achieved an R² of 0.679 on the held-out 2024 test set, explaining roughly two-thirds of house price variance using nine features. The single most impactful improvement came not from algorithm selection but from feature engineering when we introduced commune-level median income data. It boosted tree model R² by approximately 8 points, nearly doubling the gap over linear regression. This finding reinforces a key lesson from the course that the quality of your features matters more than the sophistication of your algorithm.
+The best-performing model by R² was Random Forest (0.676), with XGBoost close behind (0.670). Both tree models explain roughly two-thirds of house price variance using nine features. The single most impactful improvement came not from algorithm selection but from feature engineering: adding commune-level median income data boosted tree model R² by approximately 7 to 8 points, nearly doubling the gap over linear regression. This finding reinforces a key lesson from the course that the quality of your features matters more than the sophistication of your algorithm.
 
 The final city rankings blend lifestyle criteria from the screening phase with affordability and model predictability from the real estate analysis. The results confirm that no single city dominates in every dimension. Mediterranean cities offer the most sunshine but weaker economic profiles and a political environment that is less aligned with our family, while southwestern cities like Toulouse provide a stronger overall balance of our key lifestyle factors.
 
@@ -321,7 +321,7 @@ kable(round(cor_matrix, 2), caption = "Correlation matrix of numeric features")
 
 The correlation matrix confirms several expected relationships and reveals some useful patterns. Surface area is the strongest predictor of price among features used in the model (r = 0.64), followed by rooms (r = 0.46). Note that price per m² shows a higher correlation with price (r = 0.67) but is excluded from modeling because it is derived directly from the target variable (price / surface), which would constitute data leakage.
 
-Surface and rooms are highly correlated with each other (r = 0.74), meaning they carry a lot of overlapping information. In a linear model, this multicollinearity can inflate standard errors and make individual coefficients harder to interpret. I considered dropping rooms to reduce redundancy, but ultimately kept both because tree-based models handle correlated features naturally and rooms still contributes meaningful predictive power (12.2% of XGBoost gain) despite the overlap with surface.
+Surface and rooms are highly correlated with each other (r = 0.74), meaning they carry a lot of overlapping information. In a linear model, this multicollinearity can inflate standard errors and make individual coefficients harder to interpret. I considered dropping rooms to reduce redundancy, but ultimately kept both because tree-based models handle correlated features naturally and rooms still contributes meaningful predictive power (11.8% of XGBoost gain) despite the overlap with surface.
 
 Land area has a weaker relationship with price (r = 0.18), suggesting that lot size plays a secondary role compared to the house itself. Year shows essentially zero correlation with all other variables, reinforcing the observation from the temporal trends that the market was relatively stable over this five-year window.
 
@@ -464,9 +464,9 @@ overall |>
     kable(caption = "Overall model performance on 2024 test set")
 ```
 
-XGBoost achieved the best performance with an R² of `r sprintf("%.3f", overall$r2[overall$model == "XGBoost"])`, closely followed by Random Forest (`r sprintf("%.3f", overall$r2[overall$model == "Random Forest"])`). Both tree models substantially outperformed linear regression, reducing RMSE by approximately 11% and MAE by 17%.
+Random Forest achieved the best performance with an R² of `r sprintf("%.3f", overall$r2[overall$model == "Random Forest"])`, closely followed by XGBoost (`r sprintf("%.3f", overall$r2[overall$model == "XGBoost"])`). Both tree models substantially outperformed linear regression, reducing RMSE by approximately 11% and MAE by 17%.
 
-The narrow gap between Random Forest and XGBoost (R² difference of just 0.003) suggests that the performance ceiling is driven by *missing features* rather than model complexity. The DVF dataset does not include property condition, renovation status, energy performance rating, proximity to transit, or school quality — all of which influence house prices. A more sophisticated algorithm cannot recover information that is not in the data.
+The narrow gap between Random Forest and XGBoost (R² difference of just 0.006) suggests that the performance ceiling is driven by *missing features* rather than model complexity. The DVF dataset does not include property condition, renovation status, energy performance rating, proximity to transit, or school quality — all of which influence house prices. A more sophisticated algorithm cannot recover information that is not in the data.
 
 ```{r results-r2-chart, echo=FALSE, fig.height=3.5}
 overall |>
@@ -510,9 +510,9 @@ ggplot(per_city, aes(x = scope, y = r2, fill = model)) +
     theme(legend.position = "bottom", axis.text.x = element_text(angle = 30, hjust = 1))
 ```
 
-The per-city results reveal important heterogeneity. **Paris is the most predictable market** (R² ≈ 0.74), likely because the large income variation across its many communes provides a strong price signal. **Toulouse is the hardest to predict** (R² ≈ 0.43 for XGBoost) despite having the most training data — its market is simply more heterogeneous, with price variation driven by factors our features cannot capture.
+The per-city results reveal important heterogeneity. Paris is the most predictable market (R² ≈ 0.73 for both tree models), likely because the large income variation across its many communes provides a strong price signal. Toulouse is the hardest to predict (R² ≈ 0.43 for XGBoost) despite having the most training data. Its market is simply more heterogeneous, with price variation driven by factors our features cannot capture.
 
-Notably, Annecy (the smallest sample with only 419 test transactions) performs mid-pack (R² ≈ 0.57), suggesting that sample imbalance is not the primary driver of per-city performance differences.
+Notably, Annecy (the smallest sample with only 419 test transactions) performs mid-pack (R² ≈ 0.54), suggesting that sample imbalance is not the primary driver of per-city performance differences.
 
 ## Feature Importance
 
@@ -531,7 +531,7 @@ ggplot(fi_combined, aes(x = feature, y = importance, fill = model)) +
     theme(legend.position = "none")
 ```
 
-Both models agree that **surface area** is the dominant predictor, which is unsurprising — bigger houses cost more. The more interesting finding is that **commune-level median income** ranks as the second most important feature in XGBoost (19.2% of total gain). This confirms the EDA insight: neighborhood wealth is a powerful proxy for desirability, school quality, and amenities. The city identifier and ring (center vs. suburb) provide geographic context, while rooms, land area, and temporal features round out the picture.
+Both models agree that surface area is the dominant predictor, which is unsurprising since bigger houses cost more. The more interesting finding is that commune-level median income ranks as the second most important feature in XGBoost (19% of total gain), ahead of the city identifier and rooms. This confirms the EDA insight: neighborhood wealth is a powerful proxy for desirability, school quality, and amenities that our other features cannot capture. Rooms contributes meaningful predictive power in both models despite its high correlation with surface, validating the decision to keep both features. The city identifier and ring provide geographic context, while land area and temporal features play smaller supporting roles.
 
 ## Impact of the Income Feature
 
@@ -557,7 +557,7 @@ before <- tibble(
 kable(before, caption = "Impact of adding commune-level median income feature")
 ```
 
-Tree models gained roughly 8 R² points — nearly doubling the improvement gap over linear regression. The reason is that tree models can use income to create non-linear interaction effects (e.g., "if income > €25,000 AND surface > 100 m², predict a premium"), while linear regression only gets a single additive coefficient.
+Tree models gained 7 to 8 R² points, far exceeding linear regression's 4-point improvement. The reason is that tree models can use income to create non-linear interaction effects (e.g., "if income > €25,000 AND surface > 100 m², predict a premium"), while linear regression only gets a single additive coefficient.
 
 ## K-Means Market Clustering
 
@@ -601,7 +601,7 @@ ggplot(pca_df, aes(x = PC1, y = PC2, color = cluster, shape = target_city)) +
     theme(legend.position = "bottom", legend.box = "vertical")
 ```
 
-The PCA biplot shows that clusters cut across city boundaries — Paris communes appear in multiple tiers, and some suburban communes around Lyon and Annecy share market characteristics with central Marseille. This cross-city clustering adds nuance to the relocation decision: it is not just about choosing a city, but about choosing the right neighborhood tier within that city.
+The PCA biplot shows that clusters cut across city boundaries. Paris communes appear in multiple tiers, and communes from Lyon, Annecy, and Marseille overlap in the same clusters despite belonging to different cities. This cross-city clustering adds nuance to the relocation decision. It is not just about choosing a city, but about choosing the right neighborhood tier within that city.
 
 ## City Rankings and Predictions
 
@@ -638,7 +638,7 @@ ggplot(lollipop_data, aes(x = city_label, y = predicted_price)) +
 
 ### Multi-Criteria Ranking
 
-The final ranking combines three dimensions with explicit weights: lifestyle (50%, from the composite screening score), affordability (30%, inverted predicted price), and model predictability (20%, XGBoost R²). Including predictability rewards cities where our model's predictions are more reliable — useful when the prediction will inform an actual purchase decision.
+The final ranking combines three dimensions with explicit weights: lifestyle (50%, from the composite screening score), affordability (30%, inverted predicted price), and model predictability (20%, XGBoost R²). Including predictability rewards cities where our model's predictions are more reliable, which is useful when the prediction will inform an actual purchase decision.
 
 ```{r final-ranking, echo=FALSE}
 final_ranking |>
@@ -657,9 +657,9 @@ final_ranking |>
     kable(caption = "Final city ranking (50% lifestyle + 30% affordability + 20% predictability)")
 ```
 
-**Toulouse emerges as the top-ranked city**, with the best balance of lifestyle quality, housing affordability, and a reasonably predictable market. It offers roughly 2,000 hours of annual sunshine, a low far-right vote share, and the most affordable standard house price among the candidates. Marseille and Lyon follow as strong alternatives — Marseille offers the most sunshine but a somewhat less predictable market, while Lyon provides excellent infrastructure but at a higher price point.
+Marseille emerges as the top-ranked city (0.688), driven by strong affordability (0.935) and solid predictability (0.624) despite a middling lifestyle score. Bordeaux follows closely (0.637) with a similar profile. Montpellier ranks third, boosted by the highest affordability score (1.000) but held back by lower predictability. The top three cities all share a pattern: they score well on affordability and adequately on predictability, compensating for lifestyle scores below Paris.
 
-Paris, despite having the highest model predictability (R² = 0.74), ranks last due to its extreme prices and lower lifestyle scores. This confirms the intuition that motivated the project: Paris is a great city to leave, not to buy a house in.
+Paris, despite having the highest lifestyle score (0.796) and the best model predictability (1.000), ranks fourth because its affordability score is zero. It is the most expensive market by a wide margin. Lyon finishes last, penalized by both high prices and low predictability. This confirms the intuition that motivated the project: Paris is a great city to leave, not to buy a house in, and the ranking framework makes that reasoning explicit.
 
 # Conclusion
 
@@ -667,29 +667,31 @@ Paris, despite having the highest model predictability (R² = 0.74), ranks last 
 
 This project demonstrated a complete data science pipeline applied to a real-world decision: choosing the best French city to relocate to. Starting with a screening of 55 cities across six lifestyle dimensions, I narrowed the field to seven candidates and built predictive models using nearly 60,000 house transactions from the DVF open dataset.
 
-The key technical findings are: (1) XGBoost and Random Forest substantially outperform linear regression for house price prediction, explaining about 68% of price variance on the 2024 test set; (2) commune-level median income is a remarkably powerful feature, boosting tree model R² by approximately 8 points; and (3) model performance varies significantly across cities, with Paris being most predictable and Toulouse most challenging, in ways that are not explained by sample size alone.
+The key technical findings are: (1) Random Forest and XGBoost substantially outperform linear regression for house price prediction, explaining roughly two-thirds of price variance on the 2024 test set; (2) commune-level median income is a remarkably powerful feature, boosting tree model R² by 7 to 8 points; and (3) model performance varies significantly across cities, with Paris being most predictable and Toulouse most challenging, in ways that are not explained by sample size alone.
 
-The practical conclusion is that Toulouse offers the best combination of affordable housing, favorable climate, and community alignment for my specific priorities. The framework itself — weighted composite scoring plus ML-based affordability analysis — is reusable for anyone with different preferences.
+The practical conclusion is that Marseille offers the strongest overall balance of affordability, predictability, and lifestyle factors under the blended ranking, with Bordeaux and Montpellier close behind. The framework itself, weighted composite scoring combined with ML-based affordability analysis, is reusable for anyone with different preferences, and different weights would produce a different winner.
 
 ## Limitations
 
 Several limitations affect the analysis:
 
-The R² of 0.68 means roughly one-third of price variance remains unexplained. The DVF dataset lacks critical property attributes: house condition, renovation status, energy performance rating (DPE), proximity to public transit, and school catchment quality. These omissions likely explain much of the residual error and the heterogeneity in per-city performance.
+The best R² of 0.676 means roughly one-third of price variance remains unexplained. The DVF dataset lacks critical property attributes: house condition, renovation status, energy performance rating (DPE), proximity to public transit, and school catchment quality. These omissions likely explain much of the residual error and the heterogeneity in per-city performance.
 
-The commune-level income data is from a single year (Filosofi 2020) and is applied uniformly to transactions from 2020 through 2024. In reality, neighborhood incomes evolve over time. The 2020-only data for the first year covers only the second semester, introducing a mild seasonal imbalance.
+The commune-level income data is from a single year (Filosofi 2020) and is applied uniformly to transactions from 2020 through 2024. In reality, neighborhood incomes evolve over time, and any communes that gentrified or declined during this window would introduce noise.
 
-The city screening weights are subjective. Different weights would produce a different ranking — someone who prioritizes sunshine over politics would favor Marseille or Montpellier. The framework is transparent about this subjectivity, but it is a limitation nonetheless.
+The DVF data for 2020 covers only the second semester, introducing a mild seasonal imbalance in the first year of the training set.
 
-Finally, the temporal train/test split, while realistic, means the model is trained predominantly on a period of rising prices (2020–2022) and cooling prices (2023), then tested on a relatively stable 2024. A future market shift could degrade performance.
+The city screening weights are subjective. Different weights would produce a different ranking. Someone who prioritizes sunshine over politics would favor Marseille or Montpellier. The framework is transparent about this subjectivity, but it is a limitation nonetheless.
+
+Finally, the temporal train/test split, while realistic, means the model is trained on a period of modest price changes (2020–2023) and tested on a relatively stable 2024. A significant future market shift could degrade performance.
 
 ## Future Work
 
-Several extensions could improve the analysis. Incorporating DPE (energy performance) ratings, which are increasingly available via open data, would add a significant predictor. Geospatial features — distance to nearest metro station, school quality index, proximity to green space — could be computed from OpenStreetMap data and would likely close much of the remaining R² gap.
+Several extensions could improve the analysis. Incorporating DPE (energy performance) ratings, which are increasingly available via French open data, would add a significant predictor. Geospatial features such as distance to nearest metro station, proximity to green space, and school locations could be computed from OpenStreetMap data and would likely reduce the remaining R² gap, though by how much is hard to say without testing.
 
 On the modeling side, a stacked ensemble (combining linear regression, RF, and XGBoost predictions) could squeeze out marginal gains. City-specific models rather than a single pooled model might improve performance for difficult markets like Toulouse, at the cost of smaller training samples.
 
-For the relocation decision itself, a natural next step is to use the trained model as a property valuation tool — feeding in specific listings to identify undervalued houses in the target city.
+For the relocation decision itself, a natural next step is to use the trained model as a property valuation tool. Feeding in specific listings would let us identify undervalued houses in whichever city we choose.
 
 # References
 
@@ -699,10 +701,12 @@ For the relocation decision itself, a natural next step is to use the trained mo
 - Météo France climate normals: https://meteofrance.com/
 - 2022 Presidential Election results: https://www.data.gouv.fr/datasets/election-presidentielle-des-10-et-24-avril-2022-resultats-definitifs-du-1er-tour
 - IGN commune boundaries (for adjacency analysis): https://www.data.gouv.fr/
-- R Core Team (2024). R: A language and environment for statistical computing. https://www.R-project.org/
-- Wickham H, et al. (2019). Welcome to the tidyverse. *Journal of Open Source Software*, 4(43), 1686.
-- Liaw A, Wiener M (2002). Classification and Regression by randomForest. *R News*, 2(3), 18-22.
-- Chen T, Guestrin C (2016). XGBoost: A Scalable Tree Boosting System. *Proc. 22nd ACM SIGKDD*, 785-794.
+- R Core Team (2025). R: A language and environment for statistical computing. https://www.R-project.org/
+- Wickham H, et al. (2019). Welcome to the tidyverse. Journal of Open Source Software, 4(43), 1686.
+- Liaw A, Wiener M (2002). Classification and Regression by randomForest. R News, 2(3), 18-22.
+- Chen T, Guestrin C (2016). XGBoost: A Scalable Tree Boosting System. Proc. 22nd ACM SIGKDD, 785-794.
+- Maechler M, Rousseeuw P, Struyf A, Hubert M, Hornik K (2023). cluster: Cluster Analysis Basics and Extensions. R package. https://CRAN.R-project.org/package=cluster
+- Pebesma E (2018). Simple Features for R: Standardized Support for Spatial Vector Data. The R Journal, 10(1), 439-446.
 
 \newpage
 
